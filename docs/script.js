@@ -24,8 +24,14 @@ class TherapyAssistant {
             this.debugConsole = new DebugConsole();
             this.debugConsole.log('Starting AI Therapy Assistant Demo (Text-Only)', 'info');
             
-            this.setupEventListeners();
+            // Show loading overlay early for storage purge
             this.showLoadingOverlay(true);
+            this.updateProgress('Purging allocated storage...', 5);
+            
+            // Purge all allocated storage before initialization
+            await this.purgeAllocatedStorage();
+            
+            this.setupEventListeners();
             
             this.debugConsole.log('Initializing model loader', 'verbose');
             this.modelLoader = new ModelLoader(this.debugConsole);
@@ -99,12 +105,12 @@ class TherapyAssistant {
     async loadModels() {
         try {
             // Skip VOSK initialization for text-only demo
-            this.updateProgress('Skipping VOSK (text-only demo)...', 10);
+            this.updateProgress('Skipping VOSK (text-only demo)...', 15);
             this.debugConsole.log('VOSK disabled for text-only demo', 'info');
             
-            this.updateProgress('Loading mT5 language model...', 20);
+            this.updateProgress('Loading mT5 language model...', 25);
             await this.modelLoader.loadMT5Model((progress) => {
-                const totalProgress = 20 + (progress * 0.7);
+                const totalProgress = 25 + (progress * 0.65);
                 this.updateProgress(`Loading mT5 model... ${Math.round(progress)}%`, totalProgress);
             });
             
@@ -136,6 +142,101 @@ class TherapyAssistant {
         });
         
         this.debugConsole.log('Audio event listeners set up successfully', 'verbose');
+    }
+
+    async purgeAllocatedStorage() {
+        try {
+            this.debugConsole.log('Purging allocated storage before initialization...', 'info');
+            
+            // Clear all caches
+            if ('caches' in window) {
+                const cacheNames = await caches.keys();
+                this.debugConsole.log(`Found ${cacheNames.length} caches to clear`, 'verbose');
+                
+                for (const cacheName of cacheNames) {
+                    await caches.delete(cacheName);
+                    this.debugConsole.log(`Cleared cache: ${cacheName}`, 'verbose');
+                }
+            }
+            
+            // Clear localStorage (preserve user settings)
+            const preserveSettings = ['autoStopRecording', 'showTimestamps'];
+            const settingsBackup = {};
+            
+            // Backup user settings
+            preserveSettings.forEach(setting => {
+                const value = localStorage.getItem(setting);
+                if (value) {
+                    settingsBackup[setting] = value;
+                }
+            });
+            
+            // Clear all localStorage
+            localStorage.clear();
+            this.debugConsole.log('Cleared localStorage', 'verbose');
+            
+            // Restore user settings
+            Object.entries(settingsBackup).forEach(([key, value]) => {
+                localStorage.setItem(key, value);
+            });
+            
+            // Clear sessionStorage
+            sessionStorage.clear();
+            this.debugConsole.log('Cleared sessionStorage', 'verbose');
+            
+            // Clear IndexedDB if present
+            if ('indexedDB' in window) {
+                try {
+                    // Common IndexedDB names used by ONNX and other ML libraries
+                    const dbsToDelete = ['onnxruntime', 'wasm-cache', 'model-cache', 'ml-cache'];
+                    
+                    for (const dbName of dbsToDelete) {
+                        const deleteRequest = indexedDB.deleteDatabase(dbName);
+                        await new Promise((resolve) => {
+                            deleteRequest.onsuccess = () => {
+                                this.debugConsole.log(`Cleared IndexedDB: ${dbName}`, 'verbose');
+                                resolve();
+                            };
+                            deleteRequest.onerror = () => {
+                                // Database might not exist, that's fine
+                                resolve();
+                            };
+                            deleteRequest.onblocked = () => {
+                                this.debugConsole.log(`IndexedDB deletion blocked for: ${dbName}`, 'warn');
+                                resolve();
+                            };
+                        });
+                    }
+                } catch (error) {
+                    this.debugConsole.log(`IndexedDB cleanup failed: ${error.message}`, 'warn');
+                }
+            }
+            
+            // Trigger garbage collection if available (mainly for development)
+            if (typeof window !== 'undefined' && window.gc) {
+                this.debugConsole.log('Triggering garbage collection...', 'verbose');
+                window.gc();
+            }
+            
+            // Clear conversation history
+            this.messages = [];
+            const chatMessages = document.getElementById('chat-messages');
+            if (chatMessages) {
+                // Keep only the welcome message, remove any leftover conversation
+                const existingMessages = chatMessages.querySelectorAll('.message');
+                existingMessages.forEach(msg => msg.remove());
+            }
+            this.debugConsole.log('Cleared conversation history', 'verbose');
+            
+            // Force a small delay to allow cleanup to complete
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            this.debugConsole.log('Storage purge completed successfully', 'info');
+            
+        } catch (error) {
+            this.debugConsole.log(`Storage purge failed: ${error.message}`, 'error');
+            // Continue with initialization even if purge fails
+        }
     }
 
     initializeConversation() {
