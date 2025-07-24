@@ -11,7 +11,7 @@ const CONFIG = {
         mt5: {
             source: "huggingface", // or "local"
             path: "google/mt5-small",
-            huggingface_url: "https://huggingface.co/google/mt5-small/resolve/main/onnx/model.onnx",
+            huggingface_url: "https://huggingface.co/google/mt5-small/resolve/main/onnx/encoder_model.onnx",
             local_path: "./models/mt5-trained.onnx",
             cache_key: "mt5-model-v1",
             fallback_urls: [
