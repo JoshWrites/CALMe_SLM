@@ -19,6 +19,70 @@ class AudioProcessor extends EventTarget {
         this.isRecording = false;
         this.audioLevel = 0;
         this.voskReady = false;
+        this.webSpeechFallback = null;
+        this.webSpeechListening = false;
+    }
+
+    setupWebSpeechFallback() {
+        this.debugConsole.log('Setting up Web Speech API fallback', 'info');
+        
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            throw new Error('Neither VOSK nor Web Speech API is available');
+        }
+        
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        this.webSpeechFallback = new SpeechRecognition();
+        
+        this.webSpeechFallback.continuous = false;
+        this.webSpeechFallback.interimResults = true;
+        this.webSpeechFallback.lang = 'en-US';
+        
+        this.webSpeechFallback.onresult = (event) => {
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    this.dispatchEvent(new CustomEvent('result', { detail: transcript.trim() }));
+                } else {
+                    this.dispatchEvent(new CustomEvent('partial', { detail: transcript.trim() }));
+                }
+            }
+        };
+        
+        this.webSpeechFallback.onerror = (event) => {
+            this.debugConsole.log(`Web Speech API error: ${event.error}`, 'error');
+        };
+        
+        this.debugConsole.log('Web Speech API fallback ready', 'info');
+    }
+
+    startWebSpeechListening() {
+        if (this.webSpeechFallback && !this.webSpeechListening) {
+            this.webSpeechListening = true;
+            try {
+                this.webSpeechFallback.start();
+                this.debugConsole.log('Started Web Speech API listening', 'verbose');
+            } catch (error) {
+                this.debugConsole.log(`Web Speech API start error: ${error.message}`, 'warn');
+                this.webSpeechListening = false;
+            }
+            
+            // Auto-stop after 5 seconds
+            setTimeout(() => {
+                this.stopWebSpeechListening();
+            }, 5000);
+        }
+    }
+
+    stopWebSpeechListening() {
+        if (this.webSpeechFallback && this.webSpeechListening) {
+            this.webSpeechListening = false;
+            try {
+                this.webSpeechFallback.stop();
+                this.debugConsole.log('Stopped Web Speech API listening', 'verbose');
+            } catch (error) {
+                this.debugConsole.log(`Web Speech API stop error: ${error.message}`, 'warn');
+            }
+        }
     }
 
 
@@ -71,7 +135,10 @@ class AudioProcessor extends EventTarget {
             }
             
             if (!modelCreated) {
-                throw new Error('Failed to load VOSK model from any source. Please check your internet connection and try again.');
+                this.debugConsole.log('All VOSK sources failed, falling back to Web Speech API', 'warn');
+                this.setupWebSpeechFallback();
+                this.voskReady = true;
+                return;
             }
             
             this.debugConsole.log('Creating VOSK recognizer', 'verbose');
@@ -153,13 +220,18 @@ class AudioProcessor extends EventTarget {
         this.audioLevel = Math.min(100, (sum / inputData.length) * 500);
         this.dispatchEvent(new CustomEvent('audioLevel', { detail: this.audioLevel }));
         
-        // Process with real VOSK
+        // Process with real VOSK or Web Speech API fallback
         if (this.recognizer) {
             try {
                 // Pass AudioBuffer directly to VOSK (it expects AudioBuffer, not Int16Array)
                 this.recognizer.acceptWaveform(inputBuffer);
             } catch (error) {
                 this.debugConsole.log(`Speech processing error: ${error.message}`, 'warn');
+            }
+        } else if (this.webSpeechFallback && !this.webSpeechListening) {
+            // Start Web Speech API listening when audio activity is detected
+            if (this.audioLevel > 5) {
+                this.startWebSpeechListening();
             }
         }
     }
@@ -173,6 +245,9 @@ class AudioProcessor extends EventTarget {
         if (this.recognizer && this.recognizer.stopListening) {
             this.recognizer.stopListening();
         }
+        
+        // Stop Web Speech API fallback
+        this.stopWebSpeechListening();
         
         // Clean up audio nodes
         if (this.processor) {
