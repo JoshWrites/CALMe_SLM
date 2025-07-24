@@ -116,26 +116,51 @@ class AudioProcessor extends EventTarget {
             
             // Try different model URLs in order of preference
             const modelUrls = [
-                'https://cors-anywhere.herokuapp.com/https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip',
-                'https://api.allorigins.win/raw?url=https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip',
+                // GitHub Releases (most reliable)
+                'https://github.com/JoshWrites/CALMe_SLM/releases/download/v0.0.4/vosk-model-small-en-us-0.15.zip',
+                // Direct from alphacephei (original source)
+                'https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip',
+                // Backup CDN sources
+                'https://cdn.jsdelivr.net/gh/alphacephei/vosk-models@master/models/vosk-model-small-en-us-0.15.zip',
+                // Fallback to config
                 CONFIG.models.vosk.model_url
             ];
             
             let modelCreated = false;
-            for (const modelUrl of modelUrls) {
+            let lastError = null;
+            
+            for (let i = 0; i < modelUrls.length; i++) {
+                const modelUrl = modelUrls[i];
                 try {
-                    this.debugConsole.log(`Trying to load model from: ${modelUrl}`, 'verbose');
-                    this.model = await Vosk.createModel(modelUrl);
+                    this.debugConsole.log(`Trying to load model from: ${modelUrl} (${i + 1}/${modelUrls.length})`, 'verbose');
+                    
+                    // Add timeout for model loading
+                    const timeoutPromise = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('Model loading timeout (60s)')), 60000);
+                    });
+                    
+                    this.model = await Promise.race([
+                        Vosk.createModel(modelUrl),
+                        timeoutPromise
+                    ]);
+                    
                     this.debugConsole.log(`Successfully loaded model from: ${modelUrl}`, 'info');
                     modelCreated = true;
                     break;
                 } catch (error) {
+                    lastError = error;
                     this.debugConsole.log(`Failed to load model from ${modelUrl}: ${error.message}`, 'warn');
+                    
+                    // Add delay between attempts to avoid overwhelming servers
+                    if (i < modelUrls.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
                 }
             }
             
             if (!modelCreated) {
-                this.debugConsole.log('All VOSK sources failed, falling back to Web Speech API', 'warn');
+                this.debugConsole.log(`All VOSK sources failed. Last error: ${lastError?.message}`, 'error');
+                this.debugConsole.log('Falling back to Web Speech API', 'warn');
                 this.setupWebSpeechFallback();
                 this.voskReady = true;
                 return;

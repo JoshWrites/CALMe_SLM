@@ -82,71 +82,139 @@ class ModelLoader {
     }
 
     async downloadModel(progressCallback) {
-        const encoderUrl = 'https://huggingface.co/google/mt5-small/resolve/main/onnx/encoder_model.onnx';
+        // Try multiple model sources
+        const modelSources = [
+            'https://huggingface.co/google/mt5-small/resolve/main/onnx/encoder_model.onnx',
+            'https://huggingface.co/google/mt5-small/resolve/main/onnx/model.onnx',
+            CONFIG.models.mt5.huggingface_url
+        ];
         
-        try {
-            this.debugConsole.log(`Downloading mT5 encoder model from: ${encoderUrl}`, 'verbose');
-            
-            // Download the actual model
-            return await this.fetchWithProgress(encoderUrl, progressCallback);
-            
-        } catch (error) {
-            this.debugConsole.log(`Download failed: ${error.message}`, 'error');
-            throw new Error(`Failed to download mT5 model: ${error.message}`);
+        let lastError;
+        
+        for (const encoderUrl of modelSources) {
+            try {
+                this.debugConsole.log(`Trying to download mT5 model from: ${encoderUrl}`, 'verbose');
+                
+                // Download with retry logic
+                return await this.fetchWithProgressAndRetry(encoderUrl, progressCallback);
+                
+            } catch (error) {
+                lastError = error;
+                this.debugConsole.log(`Download from ${encoderUrl} failed: ${error.message}`, 'warn');
+            }
         }
+        
+        throw new Error(`Failed to download mT5 model from all sources. Last error: ${lastError.message}`);
     }
 
 
     async fetchWithProgress(url, progressCallback) {
-        const headers = {};
+        const headers = {
+            'User-Agent': 'CALMe-SLM/0.0.4'
+        };
         
         // Add HuggingFace authorization if token is provided
         if (CONFIG.huggingface.token) {
             headers['Authorization'] = `Bearer ${CONFIG.huggingface.token}`;
             this.debugConsole.log('Using HuggingFace authentication token', 'verbose');
+        } else {
+            this.debugConsole.log('No HuggingFace token provided - some models may be inaccessible', 'warn');
         }
         
-        const response = await fetch(url, { headers });
+        // Add timeout to fetch request
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+            controller.abort();
+        }, CONFIG.performance.model_loading_timeout);
         
-        if (!response.ok) {
-            if (response.status === 401 || response.status === 403) {
-                throw new Error(`Authentication failed (${response.status}). Check your HuggingFace token.`);
+        try {
+            const response = await fetch(url, { 
+                headers,
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                if (response.status === 401 || response.status === 403) {
+                    const errorMsg = `Authentication failed (${response.status}). ` +
+                        (CONFIG.huggingface.token ? 
+                            'Your HuggingFace token may be invalid or expired.' : 
+                            'HuggingFace token required. Add ?hf_token=your_token to the URL.');
+                    throw new Error(errorMsg);
+                }
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const contentLength = response.headers.get('content-length');
-        const total = parseInt(contentLength, 10);
-        let loaded = 0;
-        
-        const reader = response.body.getReader();
-        const chunks = [];
-        
-        while (true) {
-            const { done, value } = await reader.read();
             
-            if (done) break;
+            return response;
             
-            chunks.push(value);
-            loaded += value.length;
-            
-            if (progressCallback && total) {
-                progressCallback((loaded / total) * 100);
+        } catch (error) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                throw new Error(`Download timeout after ${CONFIG.performance.model_loading_timeout / 1000}s`);
             }
+            throw error;
         }
-        
-        // Combine chunks into single ArrayBuffer
-        const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-        const result = new Uint8Array(totalLength);
-        let position = 0;
-        
-        for (const chunk of chunks) {
-            result.set(chunk, position);
-            position += chunk.length;
-        }
-        
-        return result.buffer;
     }
+
+    async fetchWithProgressAndRetry(url, progressCallback, maxRetries = 3) {
+        let lastError;
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                this.debugConsole.log(`Download attempt ${attempt}/${maxRetries} for: ${url}`, 'verbose');
+                
+                const response = await this.fetchWithProgress(url, progressCallback);
+                
+                const contentLength = response.headers.get('content-length');
+                const total = parseInt(contentLength, 10);
+                let loaded = 0;
+                
+                const reader = response.body.getReader();
+                const chunks = [];
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) break;
+                    
+                    chunks.push(value);
+                    loaded += value.length;
+                    
+                    if (progressCallback && total) {
+                        progressCallback((loaded / total) * 100);
+                    }
+                }
+                
+                // Combine chunks into single ArrayBuffer
+                const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+                const result = new Uint8Array(totalLength);
+                let position = 0;
+                
+                for (const chunk of chunks) {
+                    result.set(chunk, position);
+                    position += chunk.length;
+                }
+                
+                this.debugConsole.log(`Successfully downloaded ${(totalLength / 1024 / 1024).toFixed(2)}MB`, 'info');
+                return result.buffer;
+                
+            } catch (error) {
+                lastError = error;
+                this.debugConsole.log(`Download attempt ${attempt} failed: ${error.message}`, 'warn');
+                
+                // Wait before retry (exponential backoff)
+                if (attempt < maxRetries) {
+                    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+                    this.debugConsole.log(`Retrying in ${delay}ms...`, 'verbose');
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+        
+        throw new Error(`Download failed after ${maxRetries} attempts. Last error: ${lastError.message}`);
+    }
+
 
     async initializeModel(modelData, progressCallback) {
         try {
