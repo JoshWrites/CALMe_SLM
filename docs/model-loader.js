@@ -670,11 +670,13 @@ class ModelLoader {
     async runOptimizedDecoder(encoderHiddenStates, encoderAttentionMask) {
         // Start with the beginning-of-sequence token (ID 2 for mT5)
         const decoderInputIds = [2]; // <s> token
-        const maxGenerationLength = 15; // Much shorter for speed
+        const maxGenerationLength = 10; // Even shorter for speed
         
         let generatedTokens = [...decoderInputIds];
+        let repetitionCount = 0;
+        let lastToken = -1;
         
-        // Generate tokens with optimized stopping
+        // Generate tokens with anti-repetition logic
         for (let i = 0; i < maxGenerationLength; i++) {
             const decoderInputTensor = new ort.Tensor('int64', BigInt64Array.from(generatedTokens.map(id => BigInt(id))), [1, generatedTokens.length]);
             
@@ -692,22 +694,46 @@ class ModelLoader {
             const vocabSize = Math.floor(logits.length / generatedTokens.length);
             const lastPositionLogits = logits.slice((generatedTokens.length - 1) * vocabSize, generatedTokens.length * vocabSize);
             
-            // Find the token with highest probability (argmax)
+            // Find the token with highest probability, but avoid repetition
             let nextTokenId = 0;
             let maxLogit = -Infinity;
-            for (let j = 0; j < lastPositionLogits.length; j++) {
-                if (lastPositionLogits[j] > maxLogit) {
+            
+            // First pass: find the best token that's not a repeat
+            for (let j = 0; j < Math.min(lastPositionLogits.length, 330); j++) { // Limit to our vocab size
+                if (lastPositionLogits[j] > maxLogit && j !== lastToken) {
                     maxLogit = lastPositionLogits[j];
                     nextTokenId = j;
                 }
             }
             
-            // Aggressive early stopping for chat responses
-            if (nextTokenId === 3 || nextTokenId === 1 || generatedTokens.length >= 10) {
+            // If we're getting the same token, force different selection
+            if (nextTokenId === lastToken) {
+                repetitionCount++;
+                if (repetitionCount > 2) {
+                    this.debugConsole.log('Breaking repetition loop', 'verbose');
+                    break;
+                }
+                // Pick second-best token
+                let secondBest = 0;
+                let secondMaxLogit = -Infinity;
+                for (let j = 0; j < Math.min(lastPositionLogits.length, 330); j++) {
+                    if (j !== nextTokenId && lastPositionLogits[j] > secondMaxLogit) {
+                        secondMaxLogit = lastPositionLogits[j];
+                        secondBest = j;
+                    }
+                }
+                nextTokenId = secondBest;
+            } else {
+                repetitionCount = 0;
+            }
+            
+            // Stop conditions
+            if (nextTokenId === 3 || nextTokenId === 1 || generatedTokens.length >= 8) {
                 break;
             }
             
             generatedTokens.push(nextTokenId);
+            lastToken = nextTokenId;
         }
         
         this.debugConsole.log(`Optimized generation: ${generatedTokens.length} tokens: ${generatedTokens.slice(1)}`, 'verbose');
