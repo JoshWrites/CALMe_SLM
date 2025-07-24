@@ -357,7 +357,7 @@ class ModelLoader {
 
     async fetchWithProgress(url, progressCallback) {
         const headers = {
-            'User-Agent': 'CALMe-SLM/0.0.19'
+            'User-Agent': 'CALMe-SLM/0.0.19.1'
         };
         
         // Add HuggingFace authorization if token is provided
@@ -1180,11 +1180,13 @@ class ModelLoader {
         const childKeywords = ['mommy', 'daddy', 'mama', 'papa', 'mom', 'dad'];
         analysis.isChildUser = childKeywords.some(keyword => text.includes(keyword));
         
-        // Emotional state detection - including trauma responses
+        // Enhanced emotional state detection - including trauma responses and crisis emotions
         const negativeTerms = [
             'scared', 'afraid', 'panic', 'hopeless', 'alone', 'overwhelmed', 'confused',
             'flashback', 'nightmare', 'hypervigilant', 'numb', 'disconnected', 'unbalanced',
-            'shattered', 'stuck', 'frozen', 'intrusive', 'startle', 'jumpy', 'edgy', 'tense'
+            'shattered', 'stuck', 'frozen', 'intrusive', 'startle', 'jumpy', 'edgy', 'tense',
+            // Crisis emotional states
+            'stressed', 'anxious', 'worried', 'terrified', 'crying', 'screaming', 'bleeding'
         ];
         const positiveTerms = [
             'better', 'calm', 'safe', 'relief', 'hope', 'improving', 'protected', 'secure',
@@ -1201,8 +1203,16 @@ class ModelLoader {
         const positiveCount = positiveTerms.filter(term => text.includes(term)).length;
         analysis.emotionalValence = positiveCount - negativeCount;
         
-        // Urgency level based on crisis keywords and embedding patterns
-        analysis.urgencyLevel = analysis.crisisKeywords.length + (analysis.magnitude > 15 ? 2 : 0);
+        // Enhanced urgency level calculation - crisis keywords have higher weight
+        const crisisWeight = analysis.crisisKeywords.length * 2; // Double weight for crisis keywords
+        const embeddingBoost = analysis.magnitude > 15 ? 2 : 0;
+        analysis.urgencyLevel = crisisWeight + embeddingBoost;
+        
+        // Special urgency boost for security threats
+        const securityKeywords = ['rocket', 'rockets', 'missile', 'bombing', 'explosion', 'attack', 'sirens'];
+        if (securityKeywords.some(keyword => text.includes(keyword))) {
+            analysis.urgencyLevel += 3; // High priority for security threats
+        }
         
         // Coherence level based on embedding variance and structure
         analysis.coherenceLevel = analysis.variance < 0.5 ? 'high' : 
@@ -1288,10 +1298,10 @@ class ModelLoader {
                     "I'm right here with you. You don't have to handle this by yourself."
                 ],
                 medium_urgency: [
-                    "I'm here with you. You're safe to share what's happening.",
-                    "Thank you for reaching out. I'm here and I'm listening.",
-                    "I'm with you in this moment. You're not alone.",
-                    "I'm here to support you. You did the right thing by asking for help."
+                    "I'm here with you and I can hear this is really difficult. You're not alone in facing this.",
+                    "I'm staying right here with you through this challenging situation. You did the right thing by reaching out.",
+                    "I can sense this is weighing heavily on you. I'm here and fully present with you right now.",
+                    "This sounds really tough, and I want you to know you have my complete attention and support."
                 ],
                 low_urgency: [
                     "I'm here with you. What would be most helpful right now?",
@@ -1362,15 +1372,15 @@ class ModelLoader {
             if (analysis.isChildUser && analysis.crisisKeywords.length > 0) {
                 responseArray = stepResponses.child_crisis;
                 this.debugConsole.log(`Selected child crisis response pattern`, 'info');
-            } else if (analysis.urgencyLevel > 3) {
+            } else if (analysis.urgencyLevel >= 4) { // Lowered threshold for high urgency
                 responseArray = stepResponses.high_urgency;
-                this.debugConsole.log(`Selected high urgency response pattern`, 'info');
-            } else if (analysis.urgencyLevel > 1) {
+                this.debugConsole.log(`Selected high urgency response pattern (urgency: ${analysis.urgencyLevel})`, 'info');
+            } else if (analysis.urgencyLevel >= 2) { // Any crisis keywords trigger medium urgency
                 responseArray = stepResponses.medium_urgency;
-                this.debugConsole.log(`Selected medium urgency response pattern`, 'info');
+                this.debugConsole.log(`Selected medium urgency response pattern (urgency: ${analysis.urgencyLevel})`, 'info');
             } else {
                 responseArray = stepResponses.low_urgency;
-                this.debugConsole.log(`Selected low urgency response pattern`, 'info');
+                this.debugConsole.log(`Selected low urgency response pattern (urgency: ${analysis.urgencyLevel})`, 'info');
             }
         } else if (step === 2) { // ACTIVATION
             responseArray = analysis.crisisKeywords.length > 0 ? 
@@ -1400,8 +1410,19 @@ class ModelLoader {
         
         const lowerInput = inputText.toLowerCase();
         
-        // Crisis response patterns
-        const crisisKeywords = ['scared', 'afraid', 'panic', 'help', 'emergency', 'danger', 'attack', 'bombing', 'sirens'];
+        // Enhanced crisis response patterns - match main crisis detection
+        const crisisKeywords = [
+            // Physical harm
+            'bleeding', 'blood', 'hurt', 'injured', 'pain', 'wound', 'bruised', 'broken',
+            // Family distress
+            'mommy', 'daddy', 'crying', 'screaming', 'scared', 'mama', 'papa', 'mom', 'dad',
+            // Israeli security context
+            'bombing', 'explosion', 'sirens', 'attack', 'danger', 'emergency', 'help', 'afraid', 'panic',
+            'rocket', 'rockets', 'missile', 'azaka', 'alarm', 'incoming', 'impact', 'debris', 'shrapnel',
+            'miklat', 'mamad', 'shelter', 'protected', 'iron', 'dome', 'intercepted', 'blast',
+            // Emotional distress
+            'stressed', 'overwhelmed', 'anxious', 'worried'
+        ];
         const isCrisis = crisisKeywords.some(keyword => lowerInput.includes(keyword));
         
         if (isCrisis) {
