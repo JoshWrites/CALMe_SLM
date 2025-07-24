@@ -18,6 +18,7 @@ class DebugConsole {
         };
         
         this.setupConsole();
+        this.setupLoadingDebug();
         this.startPerformanceMonitoring();
     }
 
@@ -42,6 +43,16 @@ class DebugConsole {
         // Override console methods if enabled
         if (CONFIG.debug.logToConsole) {
             this.overrideConsoleMethods();
+        }
+    }
+
+    setupLoadingDebug() {
+        // Show loading debug area if debug mode is enabled
+        if (this.isVisible) {
+            const loadingDebug = document.getElementById('loading-debug');
+            if (loadingDebug) {
+                loadingDebug.classList.remove('hidden');
+            }
         }
     }
 
@@ -119,29 +130,47 @@ class DebugConsole {
     }
 
     updateOutput(logEntry) {
+        // Helper function to create log entry element
+        const createLogElement = () => {
+            const logDiv = document.createElement('div');
+            logDiv.className = `debug-log ${logEntry.level}`;
+            
+            const timeSpan = document.createElement('span');
+            timeSpan.style.opacity = '0.7';
+            timeSpan.textContent = `[${logEntry.time}] `;
+            
+            const levelSpan = document.createElement('span');
+            levelSpan.style.fontWeight = 'bold';
+            levelSpan.textContent = `${logEntry.level.toUpperCase()}: `;
+            
+            const messageSpan = document.createElement('span');
+            messageSpan.textContent = logEntry.message;
+            
+            logDiv.appendChild(timeSpan);
+            if (logEntry.level !== 'verbose') {
+                logDiv.appendChild(levelSpan);
+            }
+            logDiv.appendChild(messageSpan);
+            
+            return logDiv;
+        };
+
+        // Update main debug console
         const outputElement = document.getElementById('debug-output');
-        const logDiv = document.createElement('div');
-        logDiv.className = `debug-log ${logEntry.level}`;
-        
-        const timeSpan = document.createElement('span');
-        timeSpan.style.opacity = '0.7';
-        timeSpan.textContent = `[${logEntry.time}] `;
-        
-        const levelSpan = document.createElement('span');
-        levelSpan.style.fontWeight = 'bold';
-        levelSpan.textContent = `${logEntry.level.toUpperCase()}: `;
-        
-        const messageSpan = document.createElement('span');
-        messageSpan.textContent = logEntry.message;
-        
-        logDiv.appendChild(timeSpan);
-        if (logEntry.level !== 'verbose') {
-            logDiv.appendChild(levelSpan);
+        if (outputElement) {
+            const logDiv = createLogElement();
+            outputElement.appendChild(logDiv);
+            outputElement.scrollTop = outputElement.scrollHeight;
         }
-        logDiv.appendChild(messageSpan);
-        
-        outputElement.appendChild(logDiv);
-        outputElement.scrollTop = outputElement.scrollHeight;
+
+        // Update loading debug if visible and debug mode is enabled
+        const loadingDebugOutput = document.getElementById('loading-debug-output');
+        const loadingDebug = document.getElementById('loading-debug');
+        if (loadingDebugOutput && loadingDebug && !loadingDebug.classList.contains('hidden') && this.isVisible) {
+            const loadingLogDiv = createLogElement();
+            loadingDebugOutput.appendChild(loadingLogDiv);
+            loadingDebugOutput.scrollTop = loadingDebugOutput.scrollHeight;
+        }
     }
 
     startPerformanceMonitoring() {
