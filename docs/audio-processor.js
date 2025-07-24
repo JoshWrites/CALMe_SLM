@@ -19,82 +19,8 @@ class AudioProcessor extends EventTarget {
         this.isRecording = false;
         this.audioLevel = 0;
         this.voskReady = false;
-        this.modelCache = null;
-        
-        this.initializeCache();
     }
 
-    async initializeCache() {
-        try {
-            if ('caches' in window) {
-                this.modelCache = await caches.open('vosk-models-v1');
-                this.debugConsole.log('VOSK model cache initialized', 'verbose');
-            }
-        } catch (error) {
-            this.debugConsole.log(`VOSK cache initialization failed: ${error.message}`, 'warn');
-        }
-    }
-
-    async checkVoskModelCache() {
-        if (!this.modelCache) return null;
-        
-        try {
-            const cacheKey = CONFIG.models.vosk.cache_key;
-            const response = await this.modelCache.match(cacheKey);
-            
-            if (response) {
-                const data = await response.arrayBuffer();
-                this.debugConsole.log(`Found cached VOSK model: ${(data.byteLength / 1024 / 1024).toFixed(2)}MB`, 'verbose');
-                return data;
-            }
-        } catch (error) {
-            this.debugConsole.log(`VOSK cache check failed: ${error.message}`, 'warn');
-        }
-        
-        return null;
-    }
-
-    async downloadVoskModel() {
-        const modelUrl = CONFIG.models.vosk.model_url;
-        
-        try {
-            this.debugConsole.log(`Downloading VOSK model from: ${modelUrl}`, 'verbose');
-            
-            const response = await fetch(modelUrl);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const modelData = await response.arrayBuffer();
-            this.debugConsole.log(`VOSK model downloaded: ${(modelData.byteLength / 1024 / 1024).toFixed(2)}MB`, 'info');
-            
-            return modelData;
-            
-        } catch (error) {
-            this.debugConsole.log(`VOSK model download failed: ${error.message}`, 'error');
-            throw new Error(`Failed to download VOSK model: ${error.message}`);
-        }
-    }
-
-    async cacheVoskModel(modelData) {
-        if (!this.modelCache) return;
-        
-        try {
-            const cacheKey = CONFIG.models.vosk.cache_key;
-            const response = new Response(modelData, {
-                headers: {
-                    'Content-Type': 'application/zip',
-                    'Content-Length': modelData.byteLength.toString()
-                }
-            });
-            
-            await this.modelCache.put(cacheKey, response);
-            this.debugConsole.log('VOSK model cached successfully', 'verbose');
-            
-        } catch (error) {
-            this.debugConsole.log(`Failed to cache VOSK model: ${error.message}`, 'warn');
-        }
-    }
 
     async initialize() {
         try {
@@ -121,23 +47,32 @@ class AudioProcessor extends EventTarget {
                 throw new Error('VOSK library not loaded');
             }
             
-            // Check for cached VOSK model
-            const cachedModel = await this.checkVoskModelCache();
-            
-            let modelData;
-            if (cachedModel) {
-                this.debugConsole.log('Loading VOSK model from cache', 'info');
-                modelData = cachedModel;
-            } else {
-                this.debugConsole.log('Downloading VOSK model', 'info');
-                modelData = await this.downloadVoskModel();
-                await this.cacheVoskModel(modelData);
-            }
-            
             // Create model from URL (VOSK will handle download internally)
             this.debugConsole.log('Creating VOSK model', 'verbose');
-            const modelUrl = CONFIG.models.vosk.model_url;
-            this.model = await Vosk.createModel(modelUrl);
+            
+            // Try different model URLs in order of preference
+            const modelUrls = [
+                'https://cors-anywhere.herokuapp.com/https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip',
+                'https://api.allorigins.win/raw?url=https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip',
+                CONFIG.models.vosk.model_url
+            ];
+            
+            let modelCreated = false;
+            for (const modelUrl of modelUrls) {
+                try {
+                    this.debugConsole.log(`Trying to load model from: ${modelUrl}`, 'verbose');
+                    this.model = await Vosk.createModel(modelUrl);
+                    this.debugConsole.log(`Successfully loaded model from: ${modelUrl}`, 'info');
+                    modelCreated = true;
+                    break;
+                } catch (error) {
+                    this.debugConsole.log(`Failed to load model from ${modelUrl}: ${error.message}`, 'warn');
+                }
+            }
+            
+            if (!modelCreated) {
+                throw new Error('Failed to load VOSK model from any source. Please check your internet connection and try again.');
+            }
             
             this.debugConsole.log('Creating VOSK recognizer', 'verbose');
             this.recognizer = new this.model.KaldiRecognizer(CONFIG.models.vosk.sample_rate);
