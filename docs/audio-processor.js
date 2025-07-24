@@ -23,35 +23,81 @@ class AudioProcessor extends EventTarget {
 
     async initialize() {
         try {
-            this.debugConsole.log('Initializing VOSK WebAssembly', 'verbose');
-            
-            // Initialize VOSK
-            if (typeof createModule === 'undefined') {
-                this.debugConsole.log('VOSK module not available, using mock implementation', 'warn');
-                // Use mock implementation for demo
-                const model = await this.loadVoskModel();
-                this.recognizer = new model.KaldiRecognizer(CONFIG.models.vosk.sample_rate, CONFIG.models.vosk.alternatives);
-                this.recognizer.setWords(true);
-                this.voskReady = true;
+            // Check for Web Speech API support
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                this.debugConsole.log('Initializing Web Speech API', 'verbose');
+                this.initializeWebSpeechAPI();
                 this.isInitialized = true;
-                this.debugConsole.log('Mock VOSK initialized successfully', 'info');
-                return;
+                this.debugConsole.log('Web Speech API initialized successfully', 'info');
+            } else {
+                this.debugConsole.log('Web Speech API not available, falling back to mock', 'warn');
+                await this.initializeMockRecognition();
             }
-
-            const model = await this.loadVoskModel();
-            
-            // Create recognizer
-            this.recognizer = new model.KaldiRecognizer(CONFIG.models.vosk.sample_rate, CONFIG.models.vosk.alternatives);
-            this.recognizer.setWords(true);
-            
-            this.voskReady = true;
-            this.isInitialized = true;
-            
-            this.debugConsole.log('VOSK initialized successfully', 'info');
         } catch (error) {
-            this.debugConsole.log(`VOSK initialization failed: ${error.message}`, 'error');
+            this.debugConsole.log(`Speech recognition initialization failed: ${error.message}`, 'error');
             throw error;
         }
+    }
+
+    initializeWebSpeechAPI() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        this.recognizer = new SpeechRecognition();
+        
+        // Configure recognition
+        this.recognizer.continuous = false;
+        this.recognizer.interimResults = true;
+        this.recognizer.lang = 'en-US';
+        this.recognizer.maxAlternatives = 1;
+        
+        // Set up event handlers
+        this.recognizer.onstart = () => {
+            this.debugConsole.log('Speech recognition started', 'verbose');
+            this.isRecording = true;
+        };
+        
+        this.recognizer.onresult = (event) => {
+            let finalTranscript = '';
+            let interimTranscript = '';
+            
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcript;
+                } else {
+                    interimTranscript += transcript;
+                }
+            }
+            
+            if (finalTranscript) {
+                this.debugConsole.log(`Final transcript: "${finalTranscript}"`, 'verbose');
+                this.dispatchEvent(new CustomEvent('result', { detail: finalTranscript.trim() }));
+            } else if (interimTranscript) {
+                this.debugConsole.log(`Interim transcript: "${interimTranscript}"`, 'verbose');
+                this.dispatchEvent(new CustomEvent('partial', { detail: interimTranscript.trim() }));
+            }
+        };
+        
+        this.recognizer.onerror = (event) => {
+            this.debugConsole.log(`Speech recognition error: ${event.error}`, 'error');
+            this.isRecording = false;
+        };
+        
+        this.recognizer.onend = () => {
+            this.debugConsole.log('Speech recognition ended', 'verbose');
+            this.isRecording = false;
+        };
+        
+        this.voskReady = true;
+    }
+
+    async initializeMockRecognition() {
+        this.debugConsole.log('Initializing mock speech recognition', 'verbose');
+        const model = await this.loadVoskModel();
+        this.recognizer = new model.KaldiRecognizer(CONFIG.models.vosk.sample_rate, CONFIG.models.vosk.alternatives);
+        this.recognizer.setWords(true);
+        this.voskReady = true;
+        this.isInitialized = true;
+        this.debugConsole.log('Mock speech recognition initialized', 'info');
     }
 
     async loadVoskModel() {
@@ -120,43 +166,28 @@ class AudioProcessor extends EventTarget {
         }
 
         try {
-            this.debugConsole.log('Requesting microphone access', 'verbose');
-            
-            // Request microphone access
-            this.mediaStream = await navigator.mediaDevices.getUserMedia({
-                audio: CONFIG.audio.audio_context_options
-            });
-            
-            this.debugConsole.log('Microphone access granted', 'info');
-            
-            // Create audio context
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                sampleRate: CONFIG.models.vosk.sample_rate
-            });
-            
-            // Create audio processing pipeline
-            const source = this.audioContext.createMediaStreamSource(this.mediaStream);
-            this.processor = this.audioContext.createScriptProcessor(
-                CONFIG.audio.chunk_size, 
-                1, 
-                1
-            );
-            
-            this.processor.onaudioprocess = (e) => this.processAudio(e);
-            
-            // Connect nodes
-            source.connect(this.processor);
-            this.processor.connect(this.audioContext.destination);
-            
-            this.isRecording = true;
-            this.silenceStart = null;
-            
-            // Start recording timeout
-            if (CONFIG.audio.max_recording_duration) {
-                this.recordingTimeout = setTimeout(() => {
-                    this.debugConsole.log('Maximum recording duration reached', 'warn');
-                    this.stopRecording();
-                }, CONFIG.audio.max_recording_duration);
+            if (this.recognizer && typeof this.recognizer.start === 'function') {
+                // Using Web Speech API
+                this.debugConsole.log('Starting Web Speech API recognition', 'verbose');
+                this.recognizer.start();
+            } else {
+                // Using mock VOSK implementation
+                this.debugConsole.log('Starting mock speech recognition', 'verbose');
+                this.isRecording = true;
+                
+                // Simulate audio level for visual feedback
+                this.simulateAudioLevel();
+                
+                // Simulate recognition after a delay
+                setTimeout(() => {
+                    if (this.isRecording) {
+                        const result = JSON.parse(this.recognizer.result());
+                        if (result.text) {
+                            this.dispatchEvent(new CustomEvent('result', { detail: result.text }));
+                        }
+                        this.stopRecording();
+                    }
+                }, 2000 + Math.random() * 3000); // 2-5 seconds
             }
             
         } catch (error) {
@@ -165,101 +196,36 @@ class AudioProcessor extends EventTarget {
         }
     }
 
-    processAudio(event) {
-        if (!this.isRecording || !this.voskReady) return;
+    simulateAudioLevel() {
+        if (!this.isRecording) return;
         
-        const inputData = event.inputBuffer.getChannelData(0);
+        // Simulate varying audio levels
+        const level = Math.random() * 80 + 10; // 10-90%
+        this.dispatchEvent(new CustomEvent('audioLevel', { detail: level }));
         
-        // Calculate audio level
-        let sum = 0;
-        for (let i = 0; i < inputData.length; i++) {
-            sum += Math.abs(inputData[i]);
-        }
-        this.audioLevel = Math.min(100, (sum / inputData.length) * 500);
-        
-        // Emit audio level event
-        this.dispatchEvent(new CustomEvent('audioLevel', { detail: this.audioLevel }));
-        
-        // Check for silence (for auto-stop)
-        const isSilent = this.audioLevel < CONFIG.audio.silence_threshold * 100;
-        
-        if (localStorage.getItem('autoStopRecording') === 'true') {
-            if (isSilent) {
-                if (!this.silenceStart) {
-                    this.silenceStart = Date.now();
-                } else if (Date.now() - this.silenceStart > CONFIG.audio.silence_duration) {
-                    this.debugConsole.log('Auto-stopping due to silence', 'verbose');
-                    this.stopRecording();
-                    return;
-                }
-            } else {
-                this.silenceStart = null;
-            }
-        }
-        
-        // Convert to 16-bit PCM
-        const pcmData = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-            pcmData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
-        }
-        
-        // Process with VOSK
-        if (this.recognizer) {
-            const isEndOfSpeech = this.recognizer.acceptWaveform(pcmData);
-            
-            if (isEndOfSpeech) {
-                const result = JSON.parse(this.recognizer.result());
-                if (result.text) {
-                    this.debugConsole.log(`Recognition result: "${result.text}"`, 'verbose');
-                    this.dispatchEvent(new CustomEvent('result', { detail: result.text }));
-                }
-            } else {
-                // Get partial result
-                const partial = JSON.parse(this.recognizer.partialResult());
-                if (partial.partial) {
-                    this.dispatchEvent(new CustomEvent('partial', { detail: partial.partial }));
-                }
-            }
-        }
+        setTimeout(() => this.simulateAudioLevel(), 100);
     }
+
 
     stopRecording() {
         if (!this.isRecording) return;
         
         this.isRecording = false;
         
-        // Clear recording timeout
-        if (this.recordingTimeout) {
-            clearTimeout(this.recordingTimeout);
-            this.recordingTimeout = null;
-        }
-        
-        // Get final result
-        if (this.recognizer) {
-            const finalResult = JSON.parse(this.recognizer.finalResult());
-            if (finalResult.text) {
-                this.dispatchEvent(new CustomEvent('result', { detail: finalResult.text }));
+        try {
+            if (this.recognizer && typeof this.recognizer.stop === 'function') {
+                // Using Web Speech API
+                this.debugConsole.log('Stopping Web Speech API recognition', 'verbose');
+                this.recognizer.stop();
+            } else {
+                // Using mock implementation
+                this.debugConsole.log('Stopping mock speech recognition', 'verbose');
             }
+        } catch (error) {
+            this.debugConsole.log(`Error stopping recognition: ${error.message}`, 'warn');
         }
         
-        // Clean up audio nodes
-        if (this.processor) {
-            this.processor.disconnect();
-            this.processor = null;
-        }
-        
-        // Stop media stream
-        if (this.mediaStream) {
-            this.mediaStream.getTracks().forEach(track => track.stop());
-            this.mediaStream = null;
-        }
-        
-        // Close audio context
-        if (this.audioContext) {
-            this.audioContext.close();
-            this.audioContext = null;
-        }
-        
+        // Reset audio level
         this.audioLevel = 0;
         this.dispatchEvent(new CustomEvent('audioLevel', { detail: 0 }));
         
