@@ -43,6 +43,9 @@ class TherapyAssistant {
             this.showLoadingOverlay(false);
             this.debugConsole.log('Application initialized successfully', 'info');
             
+            // Start the conversation with a therapeutic greeting
+            this.initializeConversation();
+            
             if (CONFIG.debug.runStartupTests) {
                 this.runStartupTests();
             }
@@ -133,6 +136,21 @@ class TherapyAssistant {
         });
         
         this.debugConsole.log('Audio event listeners set up successfully', 'verbose');
+    }
+
+    initializeConversation() {
+        // Remove the generic welcome message and add a proper therapeutic greeting
+        const chatMessages = document.getElementById('chat-messages');
+        const welcomeMessage = chatMessages.querySelector('.welcome-message');
+        if (welcomeMessage) {
+            welcomeMessage.remove();
+        }
+        
+        // Add an initial therapeutic greeting
+        const greeting = "Hello, I'm here to listen and support you. This is a safe space where you can share whatever is on your mind. How are you feeling today?";
+        this.addMessage(greeting, 'ai');
+        
+        this.debugConsole.log('Conversation initialized with therapeutic greeting', 'info');
     }
 
     async toggleRecording() {

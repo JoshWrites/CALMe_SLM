@@ -884,8 +884,21 @@ class ModelLoader {
     }
 
     async generateResponse(inputText) {
+        this.debugConsole.log(`Generating response for: "${inputText}"`, 'info');
+        
         if (!this.isLoaded) {
+            this.debugConsole.log('Model not loaded - cannot generate response', 'error');
             throw new Error('Model not loaded');
+        }
+        
+        // Diagnostic checks
+        this.debugConsole.log(`Encoder session: ${this.encoderSession ? 'loaded' : 'not loaded'}`, 'verbose');
+        this.debugConsole.log(`Decoder session: ${this.decoderSession ? 'loaded' : 'not loaded'}`, 'verbose');
+        this.debugConsole.log(`Tokenizer: ${this.tokenizer ? 'initialized' : 'not initialized'}`, 'verbose');
+        
+        if (!this.tokenizer) {
+            this.debugConsole.log('Tokenizer not initialized - initializing now', 'warn');
+            this.initializeTokenizer();
         }
         
         try {
@@ -894,8 +907,8 @@ class ModelLoader {
             // Store original input text for Ma'aseh analysis
             this.currentInputText = inputText;
             
-            // Prepare system prompt + user input for proper context
-            const systemPrompt = CONFIG.models.mt5.system_prompt;
+            // Check if we have a system prompt configured
+            const systemPrompt = CONFIG?.models?.mt5?.system_prompt || 'You are a helpful AI assistant.';
             const fullInput = `${systemPrompt}\n\nUser: ${inputText}\n\nAssistant:`;
             
             // Tokenize the full input including system prompt
@@ -912,7 +925,16 @@ class ModelLoader {
             
         } catch (error) {
             this.debugConsole.log(`Response generation failed: ${error.message}`, 'error');
-            throw error;
+            this.debugConsole.log(`Error stack: ${error.stack}`, 'verbose');
+            
+            // Fallback to simple Ma'aseh response if all else fails
+            this.debugConsole.log('Attempting emergency fallback response', 'warn');
+            try {
+                return this.getEmergencyResponse(inputText);
+            } catch (fallbackError) {
+                this.debugConsole.log(`Emergency fallback also failed: ${fallbackError.message}`, 'error');
+                throw error; // Throw original error
+            }
         }
     }
 
@@ -966,7 +988,11 @@ class ModelLoader {
             
         } catch (error) {
             this.debugConsole.log(`Inference failed: ${error.message}`, 'error');
-            throw error;
+            this.debugConsole.log(`Inference error stack: ${error.stack}`, 'verbose');
+            
+            // If encoder or Ma'aseh response fails, provide emergency response
+            this.debugConsole.log('Inference failed - using emergency response pattern', 'warn');
+            return this.getEmergencyResponse(this.currentInputText || 'help');
         }
     }
 
@@ -1080,7 +1106,11 @@ class ModelLoader {
             
         } catch (error) {
             this.debugConsole.log(`Ma'aseh response generation failed: ${error.message}`, 'error');
-            return "I'm here with you right now. Can you tell me what's happening around you?";
+            this.debugConsole.log(`Ma'aseh error stack: ${error.stack}`, 'verbose');
+            
+            // Use emergency response system for better fallback
+            this.debugConsole.log('Ma\'aseh failed - using emergency response', 'warn');
+            return this.getEmergencyResponse(originalText || 'help');
         }
     }
 
@@ -1294,6 +1324,58 @@ class ModelLoader {
         // Select response using embedding variance for variation
         const responseIndex = Math.floor((analysis.variance * 1000) % responseArray.length);
         return responseArray[responseIndex];
+    }
+
+    getEmergencyResponse(inputText) {
+        this.debugConsole.log('Using emergency response fallback', 'info');
+        
+        const lowerInput = inputText.toLowerCase();
+        
+        // Crisis response patterns
+        const crisisKeywords = ['scared', 'afraid', 'panic', 'help', 'emergency', 'danger', 'attack', 'bombing', 'sirens'];
+        const isCrisis = crisisKeywords.some(keyword => lowerInput.includes(keyword));
+        
+        if (isCrisis) {
+            const crisisResponses = [
+                "I'm here with you right now. You're not alone in this. Can you tell me where you are and if you're in a safe place?",
+                "I hear that you're scared. That's completely understandable. Are you somewhere safe right now?",
+                "I'm staying right here with you. You don't have to face this alone. What's happening around you right now?"
+            ];
+            return crisisResponses[Math.floor(Math.random() * crisisResponses.length)];
+        }
+        
+        // Emotional state responses
+        const sadKeywords = ['sad', 'depressed', 'down', 'hopeless', 'crying'];
+        const anxiousKeywords = ['worried', 'anxious', 'stressed', 'overwhelmed'];
+        
+        if (sadKeywords.some(keyword => lowerInput.includes(keyword))) {
+            const sadResponses = [
+                "I can hear that you're going through a really difficult time. Thank you for sharing that with me. How long have you been feeling this way?",
+                "That sounds incredibly hard. I'm here to listen and support you. What's been the most challenging part?",
+                "I'm glad you reached out. It takes courage to share when you're struggling. What would feel most helpful right now?"
+            ];
+            return sadResponses[Math.floor(Math.random() * sadResponses.length)];
+        }
+        
+        if (anxiousKeywords.some(keyword => lowerInput.includes(keyword))) {
+            const anxiousResponses = [
+                "I can sense that you're feeling anxious. That must be really uncomfortable. What's been going through your mind?",
+                "Anxiety can feel overwhelming. I'm here with you. Can you tell me what's been worrying you most?",
+                "Thank you for sharing that you're feeling anxious. What's been contributing to these feelings lately?"
+            ];
+            return anxiousResponses[Math.floor(Math.random() * anxiousResponses.length)];
+        }
+        
+        // General therapeutic responses
+        const generalResponses = [
+            "I'm here and I'm listening. Thank you for sharing that with me. Can you tell me more about what's on your mind?",
+            "I appreciate you reaching out. How are you feeling about everything right now?",
+            "Thank you for trusting me with that. What's been the most important thing on your mind lately?",
+            "I'm here to support you. What would be most helpful for us to talk about today?",
+            "I can hear that there's a lot going on for you. What feels most pressing right now?"
+        ];
+        
+        return generalResponses[Math.floor(Math.random() * generalResponses.length)];
     }
 
     // Old fake decoder method - now replaced with Ma'aseh protocol
