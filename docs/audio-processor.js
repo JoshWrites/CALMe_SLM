@@ -136,12 +136,14 @@ class AudioProcessor extends EventTarget {
         this.audioLevel = Math.min(100, (sum / inputData.length) * 500);
         this.dispatchEvent(new CustomEvent('audioLevel', { detail: this.audioLevel }));
         
-        // Process with VOSK using the AudioBuffer directly
+        // Process with simplified VOSK
         if (this.recognizer) {
             try {
+                // For the simplified version, we don't need to process every audio buffer
+                // The Web Speech API handles this internally
                 this.recognizer.acceptWaveform(inputBuffer);
             } catch (error) {
-                this.debugConsole.log(`VOSK processing error: ${error.message}`, 'warn');
+                this.debugConsole.log(`Speech processing error: ${error.message}`, 'warn');
             }
         }
     }
@@ -150,6 +152,11 @@ class AudioProcessor extends EventTarget {
         if (!this.isRecording) return;
         
         this.isRecording = false;
+        
+        // Stop speech recognition
+        if (this.recognizer && this.recognizer.stopListening) {
+            this.recognizer.stopListening();
+        }
         
         // Clean up audio nodes
         if (this.processor) {
