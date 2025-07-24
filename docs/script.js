@@ -101,12 +101,14 @@ class TherapyAssistant {
             
             this.updateProgress('Finalizing setup...', 95);
             
-            this.audioProcessor.on('result', (text) => {
+            this.audioProcessor.addEventListener('result', (event) => {
+                const text = event.detail;
                 this.debugConsole.log(`Speech recognition result: "${text}"`, 'verbose');
                 document.getElementById('message-input').value = text;
             });
             
-            this.audioProcessor.on('audioLevel', (level) => {
+            this.audioProcessor.addEventListener('audioLevel', (event) => {
+                const level = event.detail;
                 this.updateAudioLevel(level);
             });
             
