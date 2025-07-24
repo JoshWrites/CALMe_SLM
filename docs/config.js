@@ -20,9 +20,11 @@ const CONFIG = {
             expected_size: 600 * 1024 * 1024 // ~600MB
         },
         vosk: {
-            model_path: "./models/vosk-model-small-en-us-0.15/",
+            model_url: "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
+            cache_key: "vosk-model-small-en-us-0.15",
             sample_rate: 16000,
-            alternatives: 3
+            alternatives: 3,
+            expected_size: 40 * 1024 * 1024 // ~40MB
         }
     },
     audio: {

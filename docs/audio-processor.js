@@ -19,6 +19,81 @@ class AudioProcessor extends EventTarget {
         this.isRecording = false;
         this.audioLevel = 0;
         this.voskReady = false;
+        this.modelCache = null;
+        
+        this.initializeCache();
+    }
+
+    async initializeCache() {
+        try {
+            if ('caches' in window) {
+                this.modelCache = await caches.open('vosk-models-v1');
+                this.debugConsole.log('VOSK model cache initialized', 'verbose');
+            }
+        } catch (error) {
+            this.debugConsole.log(`VOSK cache initialization failed: ${error.message}`, 'warn');
+        }
+    }
+
+    async checkVoskModelCache() {
+        if (!this.modelCache) return null;
+        
+        try {
+            const cacheKey = CONFIG.models.vosk.cache_key;
+            const response = await this.modelCache.match(cacheKey);
+            
+            if (response) {
+                const data = await response.arrayBuffer();
+                this.debugConsole.log(`Found cached VOSK model: ${(data.byteLength / 1024 / 1024).toFixed(2)}MB`, 'verbose');
+                return data;
+            }
+        } catch (error) {
+            this.debugConsole.log(`VOSK cache check failed: ${error.message}`, 'warn');
+        }
+        
+        return null;
+    }
+
+    async downloadVoskModel() {
+        const modelUrl = CONFIG.models.vosk.model_url;
+        
+        try {
+            this.debugConsole.log(`Downloading VOSK model from: ${modelUrl}`, 'verbose');
+            
+            const response = await fetch(modelUrl);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const modelData = await response.arrayBuffer();
+            this.debugConsole.log(`VOSK model downloaded: ${(modelData.byteLength / 1024 / 1024).toFixed(2)}MB`, 'info');
+            
+            return modelData;
+            
+        } catch (error) {
+            this.debugConsole.log(`VOSK model download failed: ${error.message}`, 'error');
+            throw new Error(`Failed to download VOSK model: ${error.message}`);
+        }
+    }
+
+    async cacheVoskModel(modelData) {
+        if (!this.modelCache) return;
+        
+        try {
+            const cacheKey = CONFIG.models.vosk.cache_key;
+            const response = new Response(modelData, {
+                headers: {
+                    'Content-Type': 'application/zip',
+                    'Content-Length': modelData.byteLength.toString()
+                }
+            });
+            
+            await this.modelCache.put(cacheKey, response);
+            this.debugConsole.log('VOSK model cached successfully', 'verbose');
+            
+        } catch (error) {
+            this.debugConsole.log(`Failed to cache VOSK model: ${error.message}`, 'warn');
+        }
     }
 
     async initialize() {
@@ -46,13 +121,26 @@ class AudioProcessor extends EventTarget {
                 throw new Error('VOSK library not loaded');
             }
             
-            // Load the model
-            this.debugConsole.log('Loading VOSK model files', 'verbose');
-            const modelUrl = './models/vosk-model-small-en-us-0.15';
+            // Check for cached VOSK model
+            const cachedModel = await this.checkVoskModelCache();
+            
+            let modelData;
+            if (cachedModel) {
+                this.debugConsole.log('Loading VOSK model from cache', 'info');
+                modelData = cachedModel;
+            } else {
+                this.debugConsole.log('Downloading VOSK model', 'info');
+                modelData = await this.downloadVoskModel();
+                await this.cacheVoskModel(modelData);
+            }
+            
+            // Create model from URL (VOSK will handle download internally)
+            this.debugConsole.log('Creating VOSK model', 'verbose');
+            const modelUrl = CONFIG.models.vosk.model_url;
             this.model = await Vosk.createModel(modelUrl);
             
             this.debugConsole.log('Creating VOSK recognizer', 'verbose');
-            this.recognizer = new this.model.KaldiRecognizer(16000);
+            this.recognizer = new this.model.KaldiRecognizer(CONFIG.models.vosk.sample_rate);
             
             // Set up event listeners for recognition results
             this.recognizer.on('result', (result) => {
@@ -87,25 +175,19 @@ class AudioProcessor extends EventTarget {
             
             // Request microphone access
             this.mediaStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    sampleRate: 16000,
-                    channelCount: 1,
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                }
+                audio: CONFIG.audio.audio_context_options
             });
             
             this.debugConsole.log('Microphone access granted', 'info');
             
             // Create audio context
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                sampleRate: 16000
+                sampleRate: CONFIG.models.vosk.sample_rate
             });
             
             // Create audio processing pipeline
             const source = this.audioContext.createMediaStreamSource(this.mediaStream);
-            this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+            this.processor = this.audioContext.createScriptProcessor(CONFIG.audio.chunk_size, 1, 1);
             
             this.processor.onaudioprocess = (e) => this.processAudio(e);
             
@@ -136,11 +218,10 @@ class AudioProcessor extends EventTarget {
         this.audioLevel = Math.min(100, (sum / inputData.length) * 500);
         this.dispatchEvent(new CustomEvent('audioLevel', { detail: this.audioLevel }));
         
-        // Process with simplified VOSK
+        // Process with real VOSK
         if (this.recognizer) {
             try {
-                // For the simplified version, we don't need to process every audio buffer
-                // The Web Speech API handles this internally
+                // Pass AudioBuffer directly to VOSK (it expects AudioBuffer, not Int16Array)
                 this.recognizer.acceptWaveform(inputBuffer);
             } catch (error) {
                 this.debugConsole.log(`Speech processing error: ${error.message}`, 'warn');
