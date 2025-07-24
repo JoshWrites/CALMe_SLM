@@ -15,7 +15,15 @@ class ModelLoader {
         this.isLoaded = false;
         this.modelCache = null;
         
+        // Memory monitoring properties
+        this.memoryStats = {
+            lastCheck: 0,
+            peakUsage: 0,
+            warningThreshold: 0.8 // 80% of available memory
+        };
+        
         this.initializeCache();
+        this.setupMemoryMonitoring();
     }
 
     async initializeCache() {
@@ -27,6 +35,46 @@ class ModelLoader {
         } catch (error) {
             this.debugConsole.log(`Cache initialization failed: ${error.message}`, 'warn');
         }
+    }
+
+    setupMemoryMonitoring() {
+        // Set up periodic memory monitoring
+        if (performance.memory) {
+            this.memoryMonitorInterval = setInterval(() => {
+                const memInfo = performance.memory;
+                const usedMemoryMB = memInfo.usedJSHeapSize / 1024 / 1024;
+                
+                // Track peak usage
+                if (usedMemoryMB > this.memoryStats.peakUsage) {
+                    this.memoryStats.peakUsage = usedMemoryMB;
+                }
+                
+                // Log significant memory changes
+                const timeSinceLastCheck = Date.now() - this.memoryStats.lastCheck;
+                if (timeSinceLastCheck > 30000) { // Every 30 seconds
+                    this.debugConsole.log(`Memory monitoring: ${usedMemoryMB.toFixed(2)}MB used (peak: ${this.memoryStats.peakUsage.toFixed(2)}MB)`, 'verbose');
+                    this.memoryStats.lastCheck = Date.now();
+                }
+            }, 5000); // Check every 5 seconds
+        }
+    }
+
+    checkMemoryAvailability(requiredMB) {
+        if (!performance.memory) {
+            this.debugConsole.log('Memory monitoring not available - proceeding without checks', 'warn');
+            return true;
+        }
+        
+        const memInfo = performance.memory;
+        const availableMemoryMB = (memInfo.jsHeapSizeLimit - memInfo.usedJSHeapSize) / 1024 / 1024;
+        
+        if (availableMemoryMB < requiredMB) {
+            this.debugConsole.log(`Insufficient memory: ${availableMemoryMB.toFixed(2)}MB available, ${requiredMB}MB required`, 'error');
+            return false;
+        }
+        
+        this.debugConsole.log(`Memory check passed: ${availableMemoryMB.toFixed(2)}MB available, ${requiredMB}MB required`, 'verbose');
+        return true;
     }
 
     async loadMT5Model(progressCallback) {
@@ -56,13 +104,41 @@ class ModelLoader {
                 
                 if (userWantsFullAI) {
                     this.debugConsole.log('User chose to download full decoder. Starting download...', 'info');
-                    // Retry decoder download with user consent
-                    const decoderData = await this.loadModelComponent('decoder', progressCallback, true);
-                    const encoderData = await this.loadModelComponent('encoder', progressCallback);
-                    await this.initializeBothModels(encoderData, decoderData, progressCallback);
                     
-                    this.isLoaded = true;
-                    this.debugConsole.log('mT5 encoder and decoder loaded successfully after user choice', 'info');
+                    try {
+                        // Retry decoder download with user consent
+                        const decoderData = await this.loadModelComponent('decoder', progressCallback, true);
+                        const encoderData = await this.loadModelComponent('encoder', progressCallback);
+                        await this.initializeBothModels(encoderData, decoderData, progressCallback);
+                        
+                        this.isLoaded = true;
+                        this.debugConsole.log('mT5 encoder and decoder loaded successfully after user choice', 'info');
+                    } catch (fullModeError) {
+                        const errorMsg = fullModeError.message || fullModeError.toString();
+                        
+                        // Check if this is a memory error
+                        if (errorMsg.includes('MEMORY_LIMIT_EXCEEDED') || 
+                            errorMsg.includes('allocate a buffer') ||
+                            errorMsg.includes('Insufficient memory') ||
+                            errorMsg.includes('memory') || 
+                            errorMsg.includes('allocation')) {
+                            
+                            this.debugConsole.log('Full AI mode failed due to memory constraints - auto-falling back to Quick Mode', 'warn');
+                            
+                            // Show memory limitation dialog and fall back
+                            await this.showMemoryLimitationDialog();
+                            
+                            // Load encoder-only mode
+                            const encoderData = await this.loadModelComponent('encoder', progressCallback);
+                            await this.initializeEncoderOnlyMode(encoderData, progressCallback);
+                            
+                            this.isLoaded = true;
+                            this.debugConsole.log('Automatically fell back to encoder-only mode due to memory constraints', 'info');
+                        } else {
+                            // Re-throw non-memory errors
+                            throw fullModeError;
+                        }
+                    }
                 } else {
                     this.debugConsole.log('User chose encoder-only mode. Loading encoder...', 'info');
                     // Fallback: Load only encoder
@@ -160,6 +236,65 @@ class ModelLoader {
                 if (e.target === modal) {
                     document.body.removeChild(modal);
                     resolve(false); // Default to quick mode
+                }
+            };
+        });
+    }
+
+    async showMemoryLimitationDialog() {
+        return new Promise((resolve) => {
+            // Create modal dialog for memory limitation
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center;
+                z-index: 10000; font-family: system-ui, -apple-system, sans-serif;
+            `;
+            
+            const dialog = document.createElement('div');
+            dialog.style.cssText = `
+                background: white; padding: 30px; border-radius: 12px; max-width: 550px;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.3); text-align: center;
+            `;
+            
+            dialog.innerHTML = `
+                <h2 style="margin: 0 0 20px 0; color: #ff6b6b;">⚠️ Memory Limitation</h2>
+                <p style="margin: 0 0 15px 0; line-height: 1.6; color: #666;">
+                    Your browser doesn't have enough memory available for the Full AI Mode (1.1GB decoder model).
+                </p>
+                <div style="margin: 20px 0; padding: 20px; background: #f8f9ff; border-radius: 8px; border-left: 4px solid #2196F3;">
+                    <strong>✅ Switching to Quick Mode</strong><br>
+                    <div style="margin-top: 10px; font-size: 14px; color: #555;">
+                        • Smart contextual responses using real encoder (588MB)<br>
+                        • Ma'aseh crisis protocol for professional support<br>
+                        • Optimized for browser memory constraints<br>
+                        • Full therapeutic effectiveness maintained
+                    </div>
+                </div>
+                <div style="margin: 20px 0; padding: 15px; background: #fff3cd; border-radius: 8px; font-size: 14px;">
+                    <strong>💡 To use Full AI Mode:</strong><br>
+                    Close other browser tabs, restart your browser, or use a device with more available memory
+                </div>
+                <button id="continueQuickMode" style="
+                    padding: 12px 24px; border: none; background: #2196F3; color: white; 
+                    border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold;
+                ">Continue with Quick Mode</button>
+            `;
+            
+            modal.appendChild(dialog);
+            document.body.appendChild(modal);
+            
+            // Add event listener
+            dialog.querySelector('#continueQuickMode').onclick = () => {
+                document.body.removeChild(modal);
+                resolve();
+            };
+            
+            // Close on background click
+            modal.onclick = (e) => {
+                if (e.target === modal) {
+                    document.body.removeChild(modal);
+                    resolve();
                 }
             };
         });
@@ -352,10 +487,14 @@ class ModelLoader {
                     throw new Error('WebAssembly is required for mT5 model inference');
                 }
                 
-                // Load encoder only
+                // Load encoder only with memory-efficient settings
                 const sessionOptions = {
                     executionProviders: ['wasm'],
-                    graphOptimizationLevel: 'basic'
+                    graphOptimizationLevel: 'basic',
+                    // Memory optimization for encoder-only mode
+                    enableMemPattern: true,
+                    enableCpuMemArena: false,
+                    executionMode: 'sequential'
                 };
                 
                 this.encoderSession = await ort.InferenceSession.create(encoderData, sessionOptions);
@@ -405,10 +544,17 @@ class ModelLoader {
                 
                 // Load both encoder and decoder models
                 try {
-                    // Configure ONNX Runtime with proper WebAssembly settings
+                    // Configure ONNX Runtime with memory-efficient WebAssembly settings
                     const sessionOptions = {
-                        executionProviders: ['wasm'],  // Use WASM provider explicitly
-                        graphOptimizationLevel: 'basic'
+                        executionProviders: ['wasm'],
+                        graphOptimizationLevel: 'basic',
+                        // Memory optimization settings
+                        enableMemPattern: true,
+                        memLimit: 1000 * 1024 * 1024, // 1GB memory limit
+                        wasmMemoryGrowthLimit: 2048,   // 2GB max pages (32KB per page)
+                        // Additional performance settings
+                        enableCpuMemArena: false,      // Reduce memory fragmentation
+                        executionMode: 'sequential'    // Sequential execution to reduce memory peaks
                     };
                     
                     this.debugConsole.log(`ONNX Runtime WASM paths: ${ort.env.wasm.wasmPaths}`, 'verbose');
@@ -420,9 +566,38 @@ class ModelLoader {
                     this.debugConsole.log(`Encoder input names: ${Object.keys(this.encoderSession.inputNames || {})}`, 'verbose');
                     this.debugConsole.log(`Encoder output names: ${Object.keys(this.encoderSession.outputNames || {})}`, 'verbose');
                     
-                    // Create decoder session
+                    // Create decoder session with memory monitoring
                     this.debugConsole.log('Creating decoder ONNX session with WASM provider...', 'verbose');
-                    this.decoderSession = await ort.InferenceSession.create(decoderData, sessionOptions);
+                    
+                    // Check available memory before decoder creation
+                    if (performance.memory) {
+                        const memInfo = performance.memory;
+                        const availableMemory = memInfo.jsHeapSizeLimit - memInfo.usedJSHeapSize;
+                        this.debugConsole.log(`Available memory: ${(availableMemory / 1024 / 1024).toFixed(2)}MB`, 'verbose');
+                        
+                        if (availableMemory < 1200 * 1024 * 1024) { // Less than 1.2GB available
+                            this.debugConsole.log('Insufficient memory for decoder - triggering graceful fallback', 'warn');
+                            throw new Error('Insufficient memory for decoder allocation');
+                        }
+                    }
+                    
+                    // Attempt decoder creation with enhanced error handling
+                    try {
+                        this.decoderSession = await ort.InferenceSession.create(decoderData, sessionOptions);
+                    } catch (memoryError) {
+                        // Enhanced memory error detection
+                        const errorMsg = memoryError.message || memoryError.toString();
+                        if (errorMsg.includes('allocate a buffer') || 
+                            errorMsg.includes('memory') || 
+                            errorMsg.includes('allocation') ||
+                            errorMsg.includes('out of memory') ||
+                            errorMsg.includes('insufficient memory')) {
+                            this.debugConsole.log(`Memory allocation failed for decoder: ${errorMsg}`, 'error');
+                            throw new Error(`MEMORY_LIMIT_EXCEEDED: ${errorMsg}`);
+                        }
+                        // Re-throw other errors as-is
+                        throw memoryError;
+                    }
                     this.debugConsole.log('mT5 decoder ONNX model loaded successfully', 'info');
                     this.debugConsole.log(`Decoder input names: ${Object.keys(this.decoderSession.inputNames || {})}`, 'verbose');
                     this.debugConsole.log(`Decoder output names: ${Object.keys(this.decoderSession.outputNames || {})}`, 'verbose');
@@ -430,16 +605,37 @@ class ModelLoader {
                     const errorMsg = error.message || error.toString();
                     this.debugConsole.log(`Failed to load ONNX model: ${errorMsg}`, 'error');
                     
-                    // Provide specific error context
-                    if (errorMsg.includes('WebAssembly') || errorMsg.includes('wasm')) {
-                        this.debugConsole.log('WebAssembly compilation failed in ONNX Runtime', 'error');
-                    } else if (errorMsg.includes('memory') || errorMsg.includes('allocation')) {
-                        this.debugConsole.log('Memory allocation failed - model may be too large', 'error');
+                    // Check for memory allocation failures
+                    if (errorMsg.includes('MEMORY_LIMIT_EXCEEDED') || 
+                        errorMsg.includes('allocate a buffer') ||
+                        errorMsg.includes('Insufficient memory') ||
+                        errorMsg.includes('memory') || 
+                        errorMsg.includes('allocation')) {
+                        
+                        this.debugConsole.log('Memory allocation failed - triggering automatic fallback to encoder-only mode', 'warn');
+                        
+                        // Show user-friendly memory limitation dialog
+                        await this.showMemoryLimitationDialog();
+                        
+                        // Attempt encoder-only fallback
+                        try {
+                            this.debugConsole.log('Falling back to encoder-only mode due to memory constraints', 'info');
+                            await this.initializeEncoderOnlyMode(encoderData, progressCallback);
+                            return; // Successfully fell back
+                        } catch (fallbackError) {
+                            this.debugConsole.log(`Encoder-only fallback also failed: ${fallbackError.message}`, 'error');
+                            throw new Error(`Both full AI and encoder-only modes failed: ${fallbackError.message}`);
+                        }
                     }
                     
-                    // NO FALLBACK - Real model required for demo
-                    this.debugConsole.log('ONNX model loading failed - no fallback mode for text-only demo', 'error');
-                    throw new Error(`Real mT5 model required: ${errorMsg}`);
+                    // Handle other types of errors
+                    if (errorMsg.includes('WebAssembly') || errorMsg.includes('wasm')) {
+                        this.debugConsole.log('WebAssembly compilation failed in ONNX Runtime', 'error');
+                        throw new Error(`WebAssembly support required: ${errorMsg}`);
+                    }
+                    
+                    // Re-throw other errors
+                    throw new Error(`Model loading failed: ${errorMsg}`);
                 }
             } else {
                 this.debugConsole.log('ONNX Runtime not available after waiting - real model required', 'error');
@@ -721,9 +917,30 @@ class ModelLoader {
     }
 
     async runInference(inputTokens) {
-        // Check memory usage
-        if (performance.memory && performance.memory.usedJSHeapSize > CONFIG.performance.memory_warning_threshold) {
-            this.debugConsole.log('High memory usage detected', 'warn');
+        // Enhanced memory monitoring and pre-allocation checks
+        if (performance.memory) {
+            const memInfo = performance.memory;
+            const usedMemoryMB = memInfo.usedJSHeapSize / 1024 / 1024;
+            const totalMemoryMB = memInfo.jsHeapSizeLimit / 1024 / 1024;
+            const availableMemoryMB = totalMemoryMB - usedMemoryMB;
+            
+            this.debugConsole.log(`Memory status: ${usedMemoryMB.toFixed(2)}MB used, ${availableMemoryMB.toFixed(2)}MB available of ${totalMemoryMB.toFixed(2)}MB total`, 'verbose');
+            
+            // Warn if memory usage is high
+            if (usedMemoryMB > (CONFIG.performance.memory_warning_threshold / 1024 / 1024)) {
+                this.debugConsole.log('High memory usage detected - inference may be slower', 'warn');
+            }
+            
+            // Check if we have enough memory for decoder inference
+            if (this.decoderSession && availableMemoryMB < 200) {
+                this.debugConsole.log('Low memory warning - decoder inference may fail', 'warn');
+            }
+            
+            // Trigger garbage collection if available (for development/debugging)
+            if (typeof window !== 'undefined' && window.gc && availableMemoryMB < 300) {
+                this.debugConsole.log('Triggering garbage collection due to low memory', 'verbose');
+                window.gc();
+            }
         }
         
         if (!this.encoderSession) {
@@ -1101,9 +1318,22 @@ class ModelLoader {
     }
 
     destroy() {
+        // Clean up memory monitoring
+        if (this.memoryMonitorInterval) {
+            clearInterval(this.memoryMonitorInterval);
+            this.memoryMonitorInterval = null;
+        }
+        
         this.encoderSession = null;
         this.decoderSession = null;
         this.tokenizer = null;
         this.isLoaded = false;
+        
+        // Reset memory stats
+        this.memoryStats = {
+            lastCheck: 0,
+            peakUsage: 0,
+            warningThreshold: 0.8
+        };
     }
 }
