@@ -57,6 +57,9 @@ const CONFIG = {
         enableTestPhrases: true,
         maxLogEntries: 1000
     },
+    huggingface: {
+        token: new URLSearchParams(window.location.search).get('hf_token') || null
+    },
     performance: {
         enable_web_workers: true,
         model_loading_timeout: 300000, // 5 minutes
