@@ -148,6 +148,7 @@ class ModelLoader {
             'https://huggingface.co/Xenova/mt5-small/resolve/main/onnx/encoder_model_quantized.onnx'
         ] : [
             CONFIG.models.mt5.decoder_url,
+            'https://huggingface.co/Xenova/mt5-small/resolve/main/onnx/decoder_model_quantized.onnx',
             'https://huggingface.co/google/mt5-small/resolve/main/onnx/decoder_model.onnx'
         ];
         
@@ -168,15 +169,18 @@ class ModelLoader {
     }
 
     getProxyUrl(originalUrl) {
-        // Use a CORS proxy for HuggingFace models
-        // Note: In production, you should use your own proxy server
+        // Try direct URL first since HuggingFace allows CORS for ONNX models
+        // Only use proxy for non-HuggingFace URLs or as fallback
+        if (originalUrl.includes('huggingface.co')) {
+            return originalUrl; // HuggingFace allows direct access for ONNX models
+        }
+        
         const corsProxies = [
-            `https://corsproxy.io/?${encodeURIComponent(originalUrl)}`,
+            originalUrl, // Direct URL first
             `https://api.allorigins.win/raw?url=${encodeURIComponent(originalUrl)}`,
-            originalUrl // Fallback to direct URL
+            `https://corsproxy.io/?${encodeURIComponent(originalUrl)}`
         ];
         
-        // Return the first proxy URL
         return corsProxies[0];
     }
 
