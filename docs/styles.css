@@ -260,6 +260,19 @@ body {
     background-color: var(--background-color);
 }
 
+.version-footer {
+    text-align: center;
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--border-color);
+    margin-top: auto;
+}
+
+.version-text {
+    font-size: 0.75rem;
+    color: #718096;
+    font-family: monospace;
+}
+
 .loading-overlay {
     position: fixed;
     top: 0;
