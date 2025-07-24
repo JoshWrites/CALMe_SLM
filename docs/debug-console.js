@@ -29,7 +29,9 @@ class DebugConsole {
         const exportButton = document.getElementById('export-debug');
         const closeButton = document.getElementById('close-debug');
 
-        if (this.isVisible) {
+        // Don't show main debug console during loading - only show it after app loads
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (this.isVisible && loadingOverlay && loadingOverlay.classList.contains('hidden')) {
             consoleElement.classList.remove('hidden');
         }
 

@@ -319,6 +319,20 @@ class TherapyAssistant {
             overlay.classList.remove('hidden');
         } else {
             overlay.classList.add('hidden');
+            
+            // Show main debug console after loading is complete and hide loading debug
+            if (this.debugConsole && this.debugConsole.isVisible) {
+                const mainDebugConsole = document.getElementById('debug-console');
+                const loadingDebug = document.getElementById('loading-debug');
+                
+                if (mainDebugConsole) {
+                    mainDebugConsole.classList.remove('hidden');
+                }
+                
+                if (loadingDebug) {
+                    loadingDebug.classList.add('hidden');
+                }
+            }
         }
     }
 
