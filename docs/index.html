@@ -77,7 +77,7 @@
         </div>
         
         <div class="version-footer">
-            <span class="version-text">CALMe SLM v0.0.8 (Text-Only)</span>
+            <span class="version-text">CALMe SLM v0.0.9 (Text-Only)</span>
         </div>
     </div>
 
@@ -85,7 +85,7 @@
         <div class="loading-content">
             <h2>Loading AI Models</h2>
             <div class="loading-version">
-                <span class="loading-version-text">CALMe SLM v0.0.8 (Text-Only)</span>
+                <span class="loading-version-text">CALMe SLM v0.0.9 (Text-Only)</span>
             </div>
             <div class="progress-container">
                 <div class="progress-label">Initializing...</div>
@@ -155,6 +155,15 @@
 
     <script src="lib/onnxruntime-web.min.js"></script>
     <script>
+        // Initialize ONNX Runtime environment before other scripts load
+        if (typeof ort !== 'undefined') {
+            // Configure ONNX Runtime WebAssembly paths
+            ort.env.wasm.wasmPaths = 'lib/';
+            ort.env.wasm.numThreads = 1;
+            ort.env.wasm.simd = true;
+            console.log('✅ ONNX Runtime environment configured');
+        }
+        
         // Check WebAssembly support and library loading
         document.addEventListener('DOMContentLoaded', function() {
             // Check WebAssembly support
@@ -175,6 +184,7 @@
             setTimeout(() => {
                 if (typeof ort !== 'undefined') {
                     console.log('✅ ONNX Runtime loaded successfully:', ort.version || 'unknown version');
+                    console.log('WASM paths:', ort.env.wasm.wasmPaths);
                 } else {
                     console.error('❌ ONNX Runtime failed to load');
                 }

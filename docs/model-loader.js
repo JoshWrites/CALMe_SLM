@@ -82,10 +82,13 @@ class ModelLoader {
     }
 
     async downloadModel(progressCallback) {
-        // Try multiple model sources
+        // Use a smaller quantized model that's more likely to work in browsers
         const modelSources = [
+            // Try a smaller quantized version first
+            'https://huggingface.co/Xenova/mt5-small/resolve/main/onnx/decoder_model_merged_quantized.onnx',
+            'https://huggingface.co/Xenova/mt5-small/resolve/main/onnx/encoder_model_quantized.onnx',
+            // Fallback to original sources
             'https://huggingface.co/google/mt5-small/resolve/main/onnx/encoder_model.onnx',
-            'https://huggingface.co/google/mt5-small/resolve/main/onnx/model.onnx',
             CONFIG.models.mt5.huggingface_url
         ];
         
@@ -95,8 +98,12 @@ class ModelLoader {
             try {
                 this.debugConsole.log(`Trying to download mT5 model from: ${encoderUrl}`, 'verbose');
                 
+                // Use a proxy to avoid CORS issues
+                const proxyUrl = this.getProxyUrl(encoderUrl);
+                this.debugConsole.log(`Using proxy URL: ${proxyUrl}`, 'verbose');
+                
                 // Download with retry logic
-                return await this.fetchWithProgressAndRetry(encoderUrl, progressCallback);
+                return await this.fetchWithProgressAndRetry(proxyUrl, progressCallback);
                 
             } catch (error) {
                 lastError = error;
@@ -105,6 +112,19 @@ class ModelLoader {
         }
         
         throw new Error(`Failed to download mT5 model from all sources. Last error: ${lastError.message}`);
+    }
+
+    getProxyUrl(originalUrl) {
+        // Use a CORS proxy for HuggingFace models
+        // Note: In production, you should use your own proxy server
+        const corsProxies = [
+            `https://corsproxy.io/?${encodeURIComponent(originalUrl)}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(originalUrl)}`,
+            originalUrl // Fallback to direct URL
+        ];
+        
+        // Return the first proxy URL
+        return corsProxies[0];
     }
 
 
@@ -239,23 +259,21 @@ class ModelLoader {
                     await WebAssembly.compile(testWasm);
                     this.debugConsole.log('WebAssembly compilation test passed for ONNX', 'verbose');
                 } catch (wasmError) {
-                    this.debugConsole.log(`WebAssembly not available for ONNX: ${wasmError.message}`, 'warn');
-                    this.debugConsole.log('Falling back to demo mode', 'warn');
-                    await this.initializeFallbackModel(progressCallback);
-                    return;
+                    this.debugConsole.log(`WebAssembly not available for ONNX: ${wasmError.message}`, 'error');
+                    throw new Error('WebAssembly is required for mT5 model inference');
                 }
                 
                 // Load the actual mT5 model
                 try {
-                    // Set ONNX Runtime execution providers and options - prefer CPU to avoid WebGL issues
+                    // Configure ONNX Runtime with proper WebAssembly settings
                     const sessionOptions = {
-                        executionProviders: ['cpu'],  // Start with CPU-only to avoid WebGL/WebAssembly conflicts
-                        graphOptimizationLevel: 'basic',  // Reduce optimization to avoid compilation issues
-                        enableMemPattern: false,  // Disable memory pattern optimization
-                        enableCpuMemArena: false   // Disable CPU memory arena
+                        executionProviders: ['wasm'],  // Use WASM provider explicitly
+                        graphOptimizationLevel: 'basic'
                     };
                     
-                    this.debugConsole.log('Creating ONNX session with CPU provider...', 'verbose');
+                    this.debugConsole.log(`ONNX Runtime WASM paths: ${ort.env.wasm.wasmPaths}`, 'verbose');
+                    
+                    this.debugConsole.log('Creating ONNX session with WASM provider...', 'verbose');
                     this.session = await ort.InferenceSession.create(modelData, sessionOptions);
                     this.debugConsole.log('mT5 ONNX model loaded successfully', 'info');
                     this.debugConsole.log(`Model input names: ${Object.keys(this.session.inputNames || {})}`, 'verbose');
