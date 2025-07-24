@@ -22,7 +22,7 @@ class TherapyAssistant {
     async initializeApp() {
         try {
             this.debugConsole = new DebugConsole();
-            this.debugConsole.log('Starting AI Therapy Assistant Demo', 'info');
+            this.debugConsole.log('Starting AI Therapy Assistant Demo (Text-Only)', 'info');
             
             this.setupEventListeners();
             this.showLoadingOverlay(true);
@@ -30,13 +30,15 @@ class TherapyAssistant {
             this.debugConsole.log('Initializing model loader', 'verbose');
             this.modelLoader = new ModelLoader(this.debugConsole);
             
-            this.debugConsole.log('Initializing audio processor', 'verbose');
-            this.audioProcessor = new AudioProcessor(this.debugConsole);
+            // Skip audio processor initialization for text-only demo
+            // this.debugConsole.log('Initializing audio processor', 'verbose');
+            // this.audioProcessor = new AudioProcessor(this.debugConsole);
+            this.debugConsole.log('Audio processor disabled for text-only demo', 'info');
             
             await this.loadModels();
             
-            // Set up event listeners after initialization
-            this.setupAudioEventListeners();
+            // Skip audio event listeners for text-only demo
+            // this.setupAudioEventListeners();
             
             this.showLoadingOverlay(false);
             this.debugConsole.log('Application initialized successfully', 'info');
@@ -93,12 +95,13 @@ class TherapyAssistant {
 
     async loadModels() {
         try {
-            this.updateProgress('Loading VOSK speech recognition model...', 10);
-            await this.audioProcessor.initialize();
+            // Skip VOSK initialization for text-only demo
+            this.updateProgress('Skipping VOSK (text-only demo)...', 10);
+            this.debugConsole.log('VOSK disabled for text-only demo', 'info');
             
-            this.updateProgress('Loading mT5 language model...', 30);
+            this.updateProgress('Loading mT5 language model...', 20);
             await this.modelLoader.loadMT5Model((progress) => {
-                const totalProgress = 30 + (progress * 0.6);
+                const totalProgress = 20 + (progress * 0.7);
                 this.updateProgress(`Loading mT5 model... ${Math.round(progress)}%`, totalProgress);
             });
             
@@ -133,26 +136,9 @@ class TherapyAssistant {
     }
 
     async toggleRecording() {
-        const voiceButton = document.getElementById('voice-button');
-        
-        if (!this.isRecording) {
-            try {
-                await this.audioProcessor.startRecording();
-                this.isRecording = true;
-                voiceButton.classList.add('recording');
-                document.getElementById('audio-level').classList.remove('hidden');
-                this.debugConsole.log('Started recording', 'info');
-            } catch (error) {
-                this.debugConsole.log(`Recording error: ${error.message}`, 'error');
-                this.showError('Unable to access microphone. Please check permissions.');
-            }
-        } else {
-            this.audioProcessor.stopRecording();
-            this.isRecording = false;
-            voiceButton.classList.remove('recording');
-            document.getElementById('audio-level').classList.add('hidden');
-            this.debugConsole.log('Stopped recording', 'info');
-        }
+        // Voice input disabled for text-only demo
+        this.debugConsole.log('Voice input disabled - text-only demo', 'info');
+        this.showNotification('Voice input disabled for text-only demo');
     }
 
     async sendMessage() {

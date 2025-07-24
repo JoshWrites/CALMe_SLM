@@ -47,9 +47,9 @@ class ModelLoader {
                     // Cache the model
                     await this.cacheModel(modelData);
                 } catch (downloadError) {
-                    this.debugConsole.log(`Model download failed: ${downloadError.message}`, 'warn');
-                    this.debugConsole.log('Falling back to demo mode without ONNX model', 'info');
-                    await this.initializeFallbackModel(progressCallback);
+                    this.debugConsole.log(`Model download failed: ${downloadError.message}`, 'error');
+                    this.debugConsole.log('Real mT5 model required - no fallback mode', 'error');
+                    throw downloadError;
                 }
             }
             
@@ -271,14 +271,13 @@ class ModelLoader {
                         this.debugConsole.log('Memory allocation failed - model may be too large', 'error');
                     }
                     
-                    this.debugConsole.log('Falling back to demo mode', 'warn');
-                    await this.initializeFallbackModel(progressCallback);
-                    return;
+                    // NO FALLBACK - Real model required for demo
+                    this.debugConsole.log('ONNX model loading failed - no fallback mode for text-only demo', 'error');
+                    throw new Error(`Real mT5 model required: ${errorMsg}`);
                 }
             } else {
-                this.debugConsole.log('ONNX Runtime not available after waiting - falling back to demo mode', 'warn');
-                await this.initializeFallbackModel(progressCallback);
-                return;
+                this.debugConsole.log('ONNX Runtime not available after waiting - real model required', 'error');
+                throw new Error('ONNX Runtime required for mT5 model inference');
             }
             
             progressCallback(95);
@@ -290,8 +289,8 @@ class ModelLoader {
             
         } catch (error) {
             this.debugConsole.log(`Model initialization failed: ${error.message}`, 'error');
-            this.debugConsole.log('Falling back to demo mode', 'warn');
-            await this.initializeFallbackModel(progressCallback);
+            this.debugConsole.log('Real model loading required - no fallback', 'error');
+            throw error;
         }
     }
 
