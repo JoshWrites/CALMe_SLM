@@ -563,8 +563,8 @@ class ModelLoader {
 
     async runFullInference(inputTokens) {
         // Always run both encoder and decoder
-        const encoderHiddenStates = await this.runEncoderInference(inputTokens);
-        const generatedText = await this.runDecoderInference(encoderHiddenStates, inputTokens);
+        const {encoderHiddenStates, encoderAttentionMask} = await this.runEncoderInference(inputTokens);
+        const generatedText = await this.runDecoderInference(encoderHiddenStates, encoderAttentionMask);
         return generatedText;
     }
 
@@ -587,10 +587,10 @@ class ModelLoader {
         const encoderOutputTensor = encoderResults[Object.keys(encoderResults)[0]];
         this.debugConsole.log(`Encoder inference completed. Output shape: ${encoderOutputTensor.dims}`, 'verbose');
         
-        return encoderOutputTensor;
+        return {encoderHiddenStates: encoderOutputTensor, encoderAttentionMask: attentionMask};
     }
 
-    async runDecoderInference(encoderHiddenStates, inputTokens) {
+    async runDecoderInference(encoderHiddenStates, encoderAttentionMask) {
         // Prepare decoder inputs
         // Start with the beginning-of-sequence token (ID 2 for mT5)
         const decoderInputIds = [2]; // <s> token
@@ -610,7 +610,7 @@ class ModelLoader {
             const decoderFeeds = {
                 input_ids: decoderInputTensor,
                 encoder_hidden_states: encoderHiddenStates,
-                attention_mask: decoderAttentionMask
+                encoder_attention_mask: encoderAttentionMask
             };
             
             const decoderResults = await this.decoderSession.run(decoderFeeds);
