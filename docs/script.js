@@ -35,6 +35,9 @@ class TherapyAssistant {
             
             await this.loadModels();
             
+            // Set up event listeners after initialization
+            this.setupAudioEventListeners();
+            
             this.showLoadingOverlay(false);
             this.debugConsole.log('Application initialized successfully', 'info');
             
@@ -100,23 +103,28 @@ class TherapyAssistant {
             });
             
             this.updateProgress('Finalizing setup...', 95);
-            
-            this.audioProcessor.addEventListener('result', (event) => {
-                const text = event.detail;
-                this.debugConsole.log(`Speech recognition result: "${text}"`, 'verbose');
-                document.getElementById('message-input').value = text;
-            });
-            
-            this.audioProcessor.addEventListener('audioLevel', (event) => {
-                const level = event.detail;
-                this.updateAudioLevel(level);
-            });
-            
             this.updateProgress('Ready!', 100);
         } catch (error) {
             this.debugConsole.log(`Model loading error: ${error.message}`, 'error');
             throw error;
         }
+    }
+
+    setupAudioEventListeners() {
+        this.debugConsole.log('Setting up audio event listeners', 'verbose');
+        
+        this.audioProcessor.addEventListener('result', (event) => {
+            const text = event.detail;
+            this.debugConsole.log(`Speech recognition result: "${text}"`, 'verbose');
+            document.getElementById('message-input').value = text;
+        });
+        
+        this.audioProcessor.addEventListener('audioLevel', (event) => {
+            const level = event.detail;
+            this.updateAudioLevel(level);
+        });
+        
+        this.debugConsole.log('Audio event listeners set up successfully', 'verbose');
     }
 
     async toggleRecording() {
