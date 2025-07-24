@@ -7,7 +7,7 @@
  */
 
 const CONFIG = {
-    version: "Quant v0.0.7",
+    version: "Quant v0.0.8",
     models: {
         mt5: {
             source: "huggingface", // or "local"

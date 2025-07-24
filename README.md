@@ -1,4 +1,4 @@
-# AI Therapy Assistant Demo - Quant v0.0.7
+# AI Therapy Assistant Demo - Quant v0.0.8
 
 A web-based demonstration of an AI therapy assistant with speech recognition, emotional state detection, and offline capabilities.
 
@@ -12,7 +12,7 @@ This project demonstrates a therapy assistant interface that can:
 - Operate completely offline after initial setup
 - Provide debugging and development tools
 
-**Quant v0.0.7 Features:**
+**Quant v0.0.8 Features:**
 - **75% memory reduction** compared to previous versions
 - **Quantized INT8 models** for faster loading and inference
 - **Streamlined architecture** with no fallback modes
