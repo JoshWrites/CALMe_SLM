@@ -82,14 +82,12 @@ class ModelLoader {
     }
 
     async downloadModel(progressCallback) {
-        // Use a smaller quantized model that's more likely to work in browsers
+        // Use encoder-only models for proper two-stage inference
         const modelSources = [
-            // Try a smaller quantized version first
-            'https://huggingface.co/Xenova/mt5-small/resolve/main/onnx/decoder_model_merged_quantized.onnx',
-            'https://huggingface.co/Xenova/mt5-small/resolve/main/onnx/encoder_model_quantized.onnx',
-            // Fallback to original sources
+            // Try encoder models first (no decoder dependencies)
+            CONFIG.models.mt5.huggingface_url, // encoder_model.onnx from config
             'https://huggingface.co/google/mt5-small/resolve/main/onnx/encoder_model.onnx',
-            CONFIG.models.mt5.huggingface_url
+            'https://huggingface.co/Xenova/mt5-small/resolve/main/onnx/encoder_model_quantized.onnx'
         ];
         
         let lastError;
