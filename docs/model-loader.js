@@ -579,7 +579,7 @@ class ModelLoader {
         this.debugConsole.log('Running mT5 encoder inference', 'verbose');
         const encoderFeeds = { 
             input_ids: inputTensor,
-            encoder_attention_mask: attentionMask
+            attention_mask: attentionMask
         };
         const encoderResults = await this.encoderSession.run(encoderFeeds);
         
@@ -610,7 +610,7 @@ class ModelLoader {
             const decoderFeeds = {
                 input_ids: decoderInputTensor,
                 encoder_hidden_states: encoderHiddenStates,
-                decoder_attention_mask: decoderAttentionMask
+                attention_mask: decoderAttentionMask
             };
             
             const decoderResults = await this.decoderSession.run(decoderFeeds);
