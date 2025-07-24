@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Therapy Assistant Demo</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <h1>AI Therapy Assistant</h1>
+            <button id="debug-toggle" class="debug-toggle" title="Toggle Debug Console">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M12 19v-7m0 0V5m0 7h7m-7 0H5" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                Debug
+            </button>
+        </header>
+
+        <main class="main-content">
+            <div class="emotion-display">
+                <img id="emotion-image" src="images/listening.svg" alt="Current emotional state" class="emotion-image">
+            </div>
+
+            <div class="chat-container">
+                <div id="chat-messages" class="chat-messages">
+                    <div class="welcome-message">
+                        <p>Welcome! I'm here to listen and support you. How are you feeling today?</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <div class="input-controls">
+                    <button id="voice-button" class="voice-button" title="Click to speak">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                            <line x1="12" y1="19" x2="12" y2="23"/>
+                            <line x1="8" y1="23" x2="16" y2="23"/>
+                        </svg>
+                    </button>
+                    <input 
+                        type="text" 
+                        id="message-input" 
+                        class="message-input" 
+                        placeholder="Type your message here..."
+                        autocomplete="off"
+                    >
+                    <button id="send-button" class="send-button" title="Send message">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <line x1="22" y1="2" x2="11" y2="13"/>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                    </button>
+                </div>
+                <div id="audio-level" class="audio-level hidden">
+                    <div class="audio-level-bar"></div>
+                </div>
+            </div>
+        </main>
+
+        <div class="action-buttons">
+            <button id="clear-chat" class="action-button" title="Clear conversation">
+                Clear Chat
+            </button>
+            <button id="copy-chat" class="action-button" title="Copy conversation">
+                Copy Chat
+            </button>
+            <button id="settings-button" class="action-button" title="Settings">
+                Settings
+            </button>
+        </div>
+    </div>
+
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-content">
+            <h2>Loading AI Models</h2>
+            <div class="progress-container">
+                <div class="progress-label">Initializing...</div>
+                <div class="progress-bar">
+                    <div id="progress-fill" class="progress-fill"></div>
+                </div>
+                <div id="progress-text" class="progress-text">0%</div>
+            </div>
+            <p class="loading-note">This may take a minute on first load.</p>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Settings</h2>
+            <div class="settings-group">
+                <label>
+                    <input type="checkbox" id="auto-stop-recording">
+                    Auto-stop recording on silence
+                </label>
+            </div>
+            <div class="settings-group">
+                <label>
+                    <input type="checkbox" id="show-timestamps">
+                    Show message timestamps
+                </label>
+            </div>
+            <div class="settings-group">
+                <h3>Privacy</h3>
+                <p class="privacy-note">
+                    All conversations are processed locally in your browser. 
+                    No data is sent to external servers after model download.
+                </p>
+            </div>
+            <div class="settings-group">
+                <h3>About</h3>
+                <p class="about-text">
+                    AI Therapy Assistant Demo<br>
+                    © 2025 CALMe Team<br>
+                    Educational and non-commercial use only
+                </p>
+            </div>
+            <button id="close-settings" class="action-button">Close</button>
+        </div>
+    </div>
+
+    <div id="debug-console" class="debug-console hidden">
+        <div class="debug-header">
+            <h3>Debug Console</h3>
+            <div class="debug-controls">
+                <button id="clear-debug" title="Clear logs">Clear</button>
+                <button id="export-debug" title="Export logs">Export</button>
+                <button id="close-debug" title="Close">×</button>
+            </div>
+        </div>
+        <div id="debug-output" class="debug-output"></div>
+        <div class="debug-footer">
+            <div id="performance-metrics" class="performance-metrics"></div>
+        </div>
+    </div>
+
+    <script src="lib/onnxruntime-web.min.js"></script>
+    <script src="lib/vosk.js"></script>
+    <script src="config.js"></script>
+    <script src="debug-console.js"></script>
+    <script src="model-loader.js"></script>
+    <script src="audio-processor.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

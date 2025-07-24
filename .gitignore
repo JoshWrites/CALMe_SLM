@@ -1,0 +1,51 @@
+# Large model files that should be downloaded, not committed
+docs/models/mt5-*.onnx
+docs/models/mt5-*.bin
+docs/models/**/model.onnx
+docs/models/**/pytorch_model.bin
+
+# Temporary files and build artifacts
+temp-package/
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Log files and debug output
+*.log
+debug-*.txt
+
+# Browser cache and local storage
+.cache/
+node_modules/
+npm-debug.log*
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Large zip files (recreated by script)
+docs/download/therapy-demo-offline.zip
+docs/download/therapy-demo-v*.zip
+
+# Local configuration overrides
+config.local.js
+.env
+.env.local
