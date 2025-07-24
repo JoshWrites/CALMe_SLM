@@ -21,7 +21,7 @@ const CONFIG = {
                 "https://huggingface.co/google/mt5-small/resolve/main/onnx/model_quantized.onnx"
             ],
             expected_size: 600 * 1024 * 1024, // ~600MB for encoder
-            decoder_expected_size: 400 * 1024 * 1024, // ~400MB for decoder
+            decoder_expected_size: 1.13 * 1024 * 1024 * 1024, // ~1.13GB for decoder
             system_prompt: `You are an offline AI assistant designed for crisis support during active conflict situations when professional help is unavailable. Your purpose is to help civilians sheltering from bombardment, air raids, or military action to maintain psychological stability, think clearly, and manage acute stress using the Ma'aseh Model within shelter periods of 10-30 minutes.
 
 Follow the Ma'aseh 4-step sequence:
