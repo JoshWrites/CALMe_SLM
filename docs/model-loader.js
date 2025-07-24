@@ -220,20 +220,41 @@ class ModelLoader {
         try {
             progressCallback(90);
             
+            // Wait for ONNX Runtime to be fully loaded
+            let waitCount = 0;
+            while (typeof ort === 'undefined' && waitCount < 50) {
+                this.debugConsole.log('Waiting for ONNX Runtime to load...', 'verbose');
+                await new Promise(resolve => setTimeout(resolve, 100));
+                waitCount++;
+            }
+            
             // Check if ONNX Runtime is available
             if (typeof ort !== 'undefined') {
                 this.debugConsole.log('Loading real mT5 model with ONNX Runtime', 'info');
+                this.debugConsole.log(`ONNX Runtime version: ${ort.version || 'unknown'}`, 'verbose');
                 
                 // Load the actual mT5 model
                 try {
-                    this.session = await ort.InferenceSession.create(modelData);
+                    // Set ONNX Runtime execution providers and options
+                    const sessionOptions = {
+                        executionProviders: ['webgl', 'cpu'],
+                        graphOptimizationLevel: 'all'
+                    };
+                    
+                    this.session = await ort.InferenceSession.create(modelData, sessionOptions);
                     this.debugConsole.log('mT5 ONNX model loaded successfully', 'info');
+                    this.debugConsole.log(`Model input names: ${Object.keys(this.session.inputNames)}`, 'verbose');
+                    this.debugConsole.log(`Model output names: ${Object.keys(this.session.outputNames)}`, 'verbose');
                 } catch (error) {
                     this.debugConsole.log(`Failed to load ONNX model: ${error.message}`, 'error');
-                    throw error;
+                    this.debugConsole.log(`Falling back to demo mode`, 'warn');
+                    await this.initializeFallbackModel(progressCallback);
+                    return;
                 }
             } else {
-                throw new Error('ONNX Runtime not available - real model inference requires ONNX.js');
+                this.debugConsole.log('ONNX Runtime not available after waiting - falling back to demo mode', 'warn');
+                await this.initializeFallbackModel(progressCallback);
+                return;
             }
             
             progressCallback(95);
@@ -245,7 +266,8 @@ class ModelLoader {
             
         } catch (error) {
             this.debugConsole.log(`Model initialization failed: ${error.message}`, 'error');
-            throw error;
+            this.debugConsole.log('Falling back to demo mode', 'warn');
+            await this.initializeFallbackModel(progressCallback);
         }
     }
 

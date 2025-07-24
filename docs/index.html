@@ -151,6 +151,18 @@
     </div>
 
     <script src="lib/onnxruntime-web.min.js"></script>
+    <script>
+        // Check ONNX Runtime loading
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => {
+                if (typeof ort !== 'undefined') {
+                    console.log('✅ ONNX Runtime loaded successfully:', ort.version || 'unknown version');
+                } else {
+                    console.error('❌ ONNX Runtime failed to load');
+                }
+            }, 100);
+        });
+    </script>
     <script src="lib/vosk.js"></script>
     <script src="config.js"></script>
     <script src="debug-console.js"></script>

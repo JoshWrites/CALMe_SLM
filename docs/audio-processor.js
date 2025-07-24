@@ -117,7 +117,7 @@ class AudioProcessor extends EventTarget {
             // Try different model URLs in order of preference
             const modelUrls = [
                 // GitHub Releases (most reliable)
-                'https://github.com/JoshWrites/CALMe_SLM/releases/download/v0.0.4/vosk-model-small-en-us-0.15.zip',
+                'https://github.com/JoshWrites/CALMe_SLM/releases/download/v0.0.5/vosk-model-small-en-us-0.15.zip',
                 // Direct from alphacephei (original source)
                 'https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip',
                 // Backup CDN sources
