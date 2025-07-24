@@ -108,13 +108,13 @@ class TherapyAssistant {
             this.updateProgress('Skipping VOSK (text-only demo)...', 15);
             this.debugConsole.log('VOSK disabled for text-only demo', 'info');
             
-            this.updateProgress('Loading mT5 language model...', 25);
+            this.updateProgress('Loading quantized AI models...', 25);
             await this.modelLoader.loadMT5Model((progress) => {
                 const totalProgress = 25 + (progress * 0.65);
-                this.updateProgress(`Loading mT5 model... ${Math.round(progress)}%`, totalProgress);
+                this.updateProgress(`Loading quantized models... ${Math.round(progress)}%`, totalProgress);
             });
             
-            this.updateProgress('Finalizing setup...', 95);
+            this.updateProgress('AI models ready', 95);
             this.updateProgress('Ready!', 100);
         } catch (error) {
             this.debugConsole.log(`Model loading error: ${error.message}`, 'error');
@@ -286,7 +286,7 @@ class TherapyAssistant {
             this.updateEmotionalState(response);
         } catch (error) {
             this.debugConsole.log(`Response generation error: ${error.message}`, 'error');
-            this.addMessage("I'm having trouble processing that right now. Could you try rephrasing?", 'ai');
+            this.addMessage("I'm having trouble processing that right now. Please refresh and try again.", 'ai');
         } finally {
             this.isProcessing = false;
             this.updateSendButton(true);

@@ -7,21 +7,22 @@
  */
 
 const CONFIG = {
+    version: "Quant v0.0.1",
     models: {
         mt5: {
             source: "huggingface", // or "local"
             path: "google/mt5-small",
-            encoder_url: "https://huggingface.co/google/mt5-small/resolve/main/onnx/encoder_model.onnx",
-            decoder_url: "https://huggingface.co/google/mt5-small/resolve/main/onnx/decoder_model.onnx",
+            // Use INT8 quantized models for maximum memory efficiency
+            encoder_url: "https://huggingface.co/Xenova/mt5-small/resolve/main/onnx/encoder_model_quantized.onnx",
+            decoder_url: "https://huggingface.co/Xenova/mt5-small/resolve/main/onnx/decoder_model_quantized.onnx",
             huggingface_url: "https://huggingface.co/google/mt5-small/resolve/main/onnx/encoder_model.onnx", // backward compatibility
             local_path: "./models/mt5-trained.onnx",
-            cache_key: "mt5-model-v1",
-            decoder_cache_key: "mt5-decoder-v1",
-            fallback_urls: [
-                "https://huggingface.co/google/mt5-small/resolve/main/onnx/model_quantized.onnx"
-            ],
-            expected_size: 600 * 1024 * 1024, // ~600MB for encoder
-            decoder_expected_size: 1.13 * 1024 * 1024 * 1024, // ~1.13GB for decoder
+            cache_key: "mt5-quantized-encoder-v1",
+            decoder_cache_key: "mt5-quantized-decoder-v1",
+            fallback_urls: [], // No fallbacks - quantized models must work
+            // Updated size expectations for quantized models
+            expected_size: 150 * 1024 * 1024, // ~150MB for quantized encoder
+            decoder_expected_size: 280 * 1024 * 1024, // ~280MB for quantized decoder
             system_prompt: `You are an offline AI assistant designed for crisis support during active conflict situations when professional help is unavailable. Your purpose is to help civilians sheltering from bombardment, air raids, or military action to maintain psychological stability, think clearly, and manage acute stress using the Ma'aseh Model within shelter periods of 10-30 minutes.
 
 Follow the Ma'aseh 4-step sequence:
@@ -75,10 +76,10 @@ CRITICAL: Never ask "How do you feel?" - focus on factual, thinking-oriented que
     },
     performance: {
         enable_web_workers: true,
-        model_loading_timeout: 300000, // 5 minutes
-        response_generation_timeout: 30000, // 30 seconds
-        memory_warning_threshold: 500 * 1024 * 1024, // 500MB
-        enable_model_quantization: true
+        memory_warning_threshold: 200 * 1024 * 1024, // 200MB threshold (lower for quantized)
+        model_loading_timeout: 120000, // 2 minutes (faster loading)
+        response_generation_timeout: 15000, // 15 seconds (faster inference)
+        enable_quantized_inference: true
     },
     privacy: {
         disable_telemetry: true,

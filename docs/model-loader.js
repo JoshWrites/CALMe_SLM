@@ -79,80 +79,30 @@ class ModelLoader {
 
     async loadMT5Model(progressCallback) {
         try {
-            this.debugConsole.log('Starting mT5 encoder and decoder loading', 'info');
-            
-            // Try to load both encoder and decoder
-            try {
-                // Load both encoder and decoder in parallel
-                const [encoderData, decoderData] = await Promise.all([
-                    this.loadModelComponent('encoder', progressCallback),
-                    this.loadModelComponent('decoder', progressCallback)
-                ]);
-                
-                // Initialize both models
-                await this.initializeBothModels(encoderData, decoderData, progressCallback);
-                
-                this.isLoaded = true;
-                this.debugConsole.log('mT5 encoder and decoder loaded successfully', 'info');
-                
-            } catch (decoderError) {
-                this.debugConsole.log(`Decoder loading failed: ${decoderError.message}`, 'warn');
-                this.debugConsole.log('The decoder model is very large (1.13GB). Offering user choice...', 'info');
-                
-                // Show user choice dialog
-                const userWantsFullAI = await this.showDecoderChoiceDialog();
-                
-                if (userWantsFullAI) {
-                    this.debugConsole.log('User chose to download full decoder. Starting download...', 'info');
-                    
-                    try {
-                        // Retry decoder download with user consent
-                        const decoderData = await this.loadModelComponent('decoder', progressCallback, true);
-                        const encoderData = await this.loadModelComponent('encoder', progressCallback);
-                        await this.initializeBothModels(encoderData, decoderData, progressCallback);
-                        
-                        this.isLoaded = true;
-                        this.debugConsole.log('mT5 encoder and decoder loaded successfully after user choice', 'info');
-                    } catch (fullModeError) {
-                        const errorMsg = fullModeError.message || fullModeError.toString();
-                        
-                        // Check if this is a memory error
-                        if (errorMsg.includes('MEMORY_LIMIT_EXCEEDED') || 
-                            errorMsg.includes('allocate a buffer') ||
-                            errorMsg.includes('Insufficient memory') ||
-                            errorMsg.includes('memory') || 
-                            errorMsg.includes('allocation')) {
-                            
-                            this.debugConsole.log('Full AI mode failed due to memory constraints - auto-falling back to Quick Mode', 'warn');
-                            
-                            // Show memory limitation dialog and fall back
-                            await this.showMemoryLimitationDialog();
-                            
-                            // Load encoder-only mode
-                            const encoderData = await this.loadModelComponent('encoder', progressCallback);
-                            await this.initializeEncoderOnlyMode(encoderData, progressCallback);
-                            
-                            this.isLoaded = true;
-                            this.debugConsole.log('Automatically fell back to encoder-only mode due to memory constraints', 'info');
-                        } else {
-                            // Re-throw non-memory errors
-                            throw fullModeError;
-                        }
-                    }
-                } else {
-                    this.debugConsole.log('User chose encoder-only mode. Loading encoder...', 'info');
-                    // Fallback: Load only encoder
-                    const encoderData = await this.loadModelComponent('encoder', progressCallback);
-                    await this.initializeEncoderOnlyMode(encoderData, progressCallback);
-                    
-                    this.isLoaded = true;
-                    this.debugConsole.log('mT5 encoder loaded successfully (user choice: encoder-only)', 'info');
-                }
+            this.debugConsole.log('Loading quantized mT5 encoder and decoder models', 'info');
+
+            // Memory check for quantized models (should always pass)
+            const requiredMemoryMB = 450; // ~400MB models + overhead
+            if (!this.checkMemoryAvailability(requiredMemoryMB)) {
+                throw new Error(`Insufficient memory for quantized models. Required: ${requiredMemoryMB}MB`);
             }
-            
+
+            // Load both models in parallel (now feasible with quantization)
+            const [encoderData, decoderData] = await Promise.all([
+                this.loadModelComponent('encoder', progressCallback),
+                this.loadModelComponent('decoder', progressCallback)
+            ]);
+
+            // Initialize both models (no fallback option)
+            await this.initializeBothModels(encoderData, decoderData, progressCallback);
+
+            this.isLoaded = true;
+            this.debugConsole.log('Quantized mT5 encoder and decoder loaded successfully', 'info');
+
         } catch (error) {
-            this.debugConsole.log(`Model loading failed: ${error.message}`, 'error');
-            throw error;
+            this.debugConsole.log(`Quantized model loading failed: ${error.message}`, 'error');
+            // No fallback - this must work
+            throw new Error(`Failed to load quantized models: ${error.message}`);
         }
     }
 
@@ -174,131 +124,7 @@ class ModelLoader {
         return null;
     }
 
-    async showDecoderChoiceDialog() {
-        return new Promise((resolve) => {
-            // Create modal dialog
-            const modal = document.createElement('div');
-            modal.style.cssText = `
-                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center;
-                z-index: 10000; font-family: system-ui, -apple-system, sans-serif;
-            `;
-            
-            const dialog = document.createElement('div');
-            dialog.style.cssText = `
-                background: white; padding: 30px; border-radius: 12px; max-width: 500px;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.3); text-align: center;
-            `;
-            
-            dialog.innerHTML = `
-                <h2 style="margin: 0 0 20px 0; color: #333;">Choose AI Mode</h2>
-                <p style="margin: 0 0 10px 0; line-height: 1.5; color: #666;">
-                    The full AI decoder model is <strong>1.13GB</strong>. You can choose:
-                </p>
-                <div style="margin: 20px 0; text-align: left;">
-                    <div style="margin: 15px 0; padding: 15px; background: #f5f5f5; border-radius: 8px;">
-                        <strong>⚡ Quick Mode (588MB)</strong><br>
-                        <small>Smart contextual responses using real encoder + Ma'aseh crisis protocol</small>
-                    </div>
-                    <div style="margin: 15px 0; padding: 15px; background: #e3f2fd; border-radius: 8px;">
-                        <strong>🧠 Full AI Mode (1.7GB total)</strong><br>
-                        <small>True neural text generation with complete decoder model</small>
-                    </div>
-                </div>
-                <div style="margin-top: 25px;">
-                    <button id="quickMode" style="
-                        padding: 12px 24px; margin: 0 10px; border: 2px solid #666; 
-                        background: white; border-radius: 6px; cursor: pointer; font-size: 14px;
-                    ">Quick Mode</button>
-                    <button id="fullMode" style="
-                        padding: 12px 24px; margin: 0 10px; border: 2px solid #2196F3; 
-                        background: #2196F3; color: white; border-radius: 6px; cursor: pointer; font-size: 14px;
-                    ">Full AI Mode</button>
-                </div>
-            `;
-            
-            modal.appendChild(dialog);
-            document.body.appendChild(modal);
-            
-            // Add event listeners
-            dialog.querySelector('#quickMode').onclick = () => {
-                document.body.removeChild(modal);
-                resolve(false);
-            };
-            
-            dialog.querySelector('#fullMode').onclick = () => {
-                document.body.removeChild(modal);
-                resolve(true);
-            };
-            
-            // Close on background click
-            modal.onclick = (e) => {
-                if (e.target === modal) {
-                    document.body.removeChild(modal);
-                    resolve(false); // Default to quick mode
-                }
-            };
-        });
-    }
 
-    async showMemoryLimitationDialog() {
-        return new Promise((resolve) => {
-            // Create modal dialog for memory limitation
-            const modal = document.createElement('div');
-            modal.style.cssText = `
-                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center;
-                z-index: 10000; font-family: system-ui, -apple-system, sans-serif;
-            `;
-            
-            const dialog = document.createElement('div');
-            dialog.style.cssText = `
-                background: white; padding: 30px; border-radius: 12px; max-width: 550px;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.3); text-align: center;
-            `;
-            
-            dialog.innerHTML = `
-                <h2 style="margin: 0 0 20px 0; color: #ff6b6b;">⚠️ Memory Limitation</h2>
-                <p style="margin: 0 0 15px 0; line-height: 1.6; color: #666;">
-                    Your browser doesn't have enough memory available for the Full AI Mode (1.1GB decoder model).
-                </p>
-                <div style="margin: 20px 0; padding: 20px; background: #f8f9ff; border-radius: 8px; border-left: 4px solid #2196F3;">
-                    <strong>✅ Switching to Quick Mode</strong><br>
-                    <div style="margin-top: 10px; font-size: 14px; color: #555;">
-                        • Smart contextual responses using real encoder (588MB)<br>
-                        • Ma'aseh crisis protocol for professional support<br>
-                        • Optimized for browser memory constraints<br>
-                        • Full therapeutic effectiveness maintained
-                    </div>
-                </div>
-                <div style="margin: 20px 0; padding: 15px; background: #fff3cd; border-radius: 8px; font-size: 14px;">
-                    <strong>💡 To use Full AI Mode:</strong><br>
-                    Close other browser tabs, restart your browser, or use a device with more available memory
-                </div>
-                <button id="continueQuickMode" style="
-                    padding: 12px 24px; border: none; background: #2196F3; color: white; 
-                    border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold;
-                ">Continue with Quick Mode</button>
-            `;
-            
-            modal.appendChild(dialog);
-            document.body.appendChild(modal);
-            
-            // Add event listener
-            dialog.querySelector('#continueQuickMode').onclick = () => {
-                document.body.removeChild(modal);
-                resolve();
-            };
-            
-            // Close on background click
-            modal.onclick = (e) => {
-                if (e.target === modal) {
-                    document.body.removeChild(modal);
-                    resolve();
-                }
-            };
-        });
-    }
 
     async loadModelComponent(component, progressCallback) {
         const cacheKey = component === 'encoder' ? CONFIG.models.mt5.cache_key : CONFIG.models.mt5.decoder_cache_key;
@@ -357,7 +183,7 @@ class ModelLoader {
 
     async fetchWithProgress(url, progressCallback) {
         const headers = {
-            'User-Agent': 'CALMe-SLM/0.0.19.1'
+            'User-Agent': 'CALMe-SLM/Quant-v0.0.1'
         };
         
         // Add HuggingFace authorization if token is provided
@@ -463,236 +289,54 @@ class ModelLoader {
     }
 
 
-    async initializeEncoderOnlyMode(encoderData, progressCallback) {
-        try {
-            progressCallback(90);
-            
-            // Wait for ONNX Runtime to be fully loaded
-            let waitCount = 0;
-            while (typeof ort === 'undefined' && waitCount < 50) {
-                this.debugConsole.log('Waiting for ONNX Runtime to load...', 'verbose');
-                await new Promise(resolve => setTimeout(resolve, 100));
-                waitCount++;
-            }
-            
-            if (typeof ort !== 'undefined') {
-                this.debugConsole.log('Loading encoder-only mode with ONNX Runtime', 'info');
-                
-                // Test WebAssembly capability
-                try {
-                    const testWasm = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
-                    await WebAssembly.compile(testWasm);
-                    this.debugConsole.log('WebAssembly compilation test passed for encoder-only', 'verbose');
-                } catch (wasmError) {
-                    throw new Error('WebAssembly is required for mT5 model inference');
-                }
-                
-                // Load encoder only with memory-efficient settings
-                const sessionOptions = {
-                    executionProviders: ['wasm'],
-                    graphOptimizationLevel: 'basic',
-                    // Memory optimization for encoder-only mode
-                    enableMemPattern: true,
-                    enableCpuMemArena: false,
-                    executionMode: 'sequential'
-                };
-                
-                this.encoderSession = await ort.InferenceSession.create(encoderData, sessionOptions);
-                this.decoderSession = null; // Mark as encoder-only mode
-                this.debugConsole.log('mT5 encoder loaded successfully (encoder-only mode)', 'info');
-                
-            } else {
-                throw new Error('ONNX Runtime required for mT5 model inference');
-            }
-            
-            progressCallback(95);
-            this.initializeTokenizer();
-            progressCallback(100);
-            
-        } catch (error) {
-            this.debugConsole.log(`Encoder-only initialization failed: ${error.message}`, 'error');
-            throw error;
-        }
-    }
 
     async initializeBothModels(encoderData, decoderData, progressCallback) {
         try {
             progressCallback(90);
-            
-            // Wait for ONNX Runtime to be fully loaded
+
+            // Wait for ONNX Runtime
             let waitCount = 0;
             while (typeof ort === 'undefined' && waitCount < 50) {
-                this.debugConsole.log('Waiting for ONNX Runtime to load...', 'verbose');
                 await new Promise(resolve => setTimeout(resolve, 100));
                 waitCount++;
             }
-            
-            // Check if ONNX Runtime is available
-            if (typeof ort !== 'undefined') {
-                this.debugConsole.log('Loading real mT5 model with ONNX Runtime', 'info');
-                this.debugConsole.log(`ONNX Runtime version: ${ort.version || 'unknown'}`, 'verbose');
-                
-                // Test WebAssembly capability for ONNX
-                try {
-                    const testWasm = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
-                    await WebAssembly.compile(testWasm);
-                    this.debugConsole.log('WebAssembly compilation test passed for ONNX', 'verbose');
-                } catch (wasmError) {
-                    this.debugConsole.log(`WebAssembly not available for ONNX: ${wasmError.message}`, 'error');
-                    throw new Error('WebAssembly is required for mT5 model inference');
-                }
-                
-                // Load both encoder and decoder models
-                try {
-                    // Configure ONNX Runtime with memory-efficient WebAssembly settings
-                    const sessionOptions = {
-                        executionProviders: ['wasm'],
-                        graphOptimizationLevel: 'basic',
-                        // Memory optimization settings
-                        enableMemPattern: true,
-                        memLimit: 1000 * 1024 * 1024, // 1GB memory limit
-                        wasmMemoryGrowthLimit: 2048,   // 2GB max pages (32KB per page)
-                        // Additional performance settings
-                        enableCpuMemArena: false,      // Reduce memory fragmentation
-                        executionMode: 'sequential'    // Sequential execution to reduce memory peaks
-                    };
-                    
-                    this.debugConsole.log(`ONNX Runtime WASM paths: ${ort.env.wasm.wasmPaths}`, 'verbose');
-                    
-                    // Create encoder session
-                    this.debugConsole.log('Creating encoder ONNX session with WASM provider...', 'verbose');
-                    this.encoderSession = await ort.InferenceSession.create(encoderData, sessionOptions);
-                    this.debugConsole.log('mT5 encoder ONNX model loaded successfully', 'info');
-                    this.debugConsole.log(`Encoder input names: ${Object.keys(this.encoderSession.inputNames || {})}`, 'verbose');
-                    this.debugConsole.log(`Encoder output names: ${Object.keys(this.encoderSession.outputNames || {})}`, 'verbose');
-                    
-                    // Create decoder session with memory monitoring
-                    this.debugConsole.log('Creating decoder ONNX session with WASM provider...', 'verbose');
-                    
-                    // Check available memory before decoder creation
-                    if (performance.memory) {
-                        const memInfo = performance.memory;
-                        const availableMemory = memInfo.jsHeapSizeLimit - memInfo.usedJSHeapSize;
-                        this.debugConsole.log(`Available memory: ${(availableMemory / 1024 / 1024).toFixed(2)}MB`, 'verbose');
-                        
-                        if (availableMemory < 1200 * 1024 * 1024) { // Less than 1.2GB available
-                            this.debugConsole.log('Insufficient memory for decoder - triggering graceful fallback', 'warn');
-                            throw new Error('Insufficient memory for decoder allocation');
-                        }
-                    }
-                    
-                    // Attempt decoder creation with enhanced error handling
-                    try {
-                        this.decoderSession = await ort.InferenceSession.create(decoderData, sessionOptions);
-                    } catch (memoryError) {
-                        // Enhanced memory error detection
-                        const errorMsg = memoryError.message || memoryError.toString();
-                        if (errorMsg.includes('allocate a buffer') || 
-                            errorMsg.includes('memory') || 
-                            errorMsg.includes('allocation') ||
-                            errorMsg.includes('out of memory') ||
-                            errorMsg.includes('insufficient memory')) {
-                            this.debugConsole.log(`Memory allocation failed for decoder: ${errorMsg}`, 'error');
-                            throw new Error(`MEMORY_LIMIT_EXCEEDED: ${errorMsg}`);
-                        }
-                        // Re-throw other errors as-is
-                        throw memoryError;
-                    }
-                    this.debugConsole.log('mT5 decoder ONNX model loaded successfully', 'info');
-                    this.debugConsole.log(`Decoder input names: ${Object.keys(this.decoderSession.inputNames || {})}`, 'verbose');
-                    this.debugConsole.log(`Decoder output names: ${Object.keys(this.decoderSession.outputNames || {})}`, 'verbose');
-                } catch (error) {
-                    const errorMsg = error.message || error.toString();
-                    this.debugConsole.log(`Failed to load ONNX model: ${errorMsg}`, 'error');
-                    
-                    // Check for memory allocation failures
-                    if (errorMsg.includes('MEMORY_LIMIT_EXCEEDED') || 
-                        errorMsg.includes('allocate a buffer') ||
-                        errorMsg.includes('Insufficient memory') ||
-                        errorMsg.includes('memory') || 
-                        errorMsg.includes('allocation')) {
-                        
-                        this.debugConsole.log('Memory allocation failed - triggering automatic fallback to encoder-only mode', 'warn');
-                        
-                        // Show user-friendly memory limitation dialog
-                        await this.showMemoryLimitationDialog();
-                        
-                        // Attempt encoder-only fallback
-                        try {
-                            this.debugConsole.log('Falling back to encoder-only mode due to memory constraints', 'info');
-                            await this.initializeEncoderOnlyMode(encoderData, progressCallback);
-                            return; // Successfully fell back
-                        } catch (fallbackError) {
-                            this.debugConsole.log(`Encoder-only fallback also failed: ${fallbackError.message}`, 'error');
-                            throw new Error(`Both full AI and encoder-only modes failed: ${fallbackError.message}`);
-                        }
-                    }
-                    
-                    // Handle other types of errors
-                    if (errorMsg.includes('WebAssembly') || errorMsg.includes('wasm')) {
-                        this.debugConsole.log('WebAssembly compilation failed in ONNX Runtime', 'error');
-                        throw new Error(`WebAssembly support required: ${errorMsg}`);
-                    }
-                    
-                    // Re-throw other errors
-                    throw new Error(`Model loading failed: ${errorMsg}`);
-                }
-            } else {
-                this.debugConsole.log('ONNX Runtime not available after waiting - real model required', 'error');
-                throw new Error('ONNX Runtime required for mT5 model inference');
+
+            if (typeof ort === 'undefined') {
+                throw new Error('ONNX Runtime required for quantized model inference');
             }
-            
+
+            // Optimized session options for quantized models
+            const sessionOptions = {
+                executionProviders: ['wasm'],
+                graphOptimizationLevel: 'extended', // More aggressive optimization for quantized models
+                enableMemPattern: true,
+                enableCpuMemArena: true, // Can enable with lower memory usage
+                executionMode: 'parallel', // Parallel execution with quantized models
+                // Quantized model specific optimizations
+                enableQuantization: true,
+                quantizationMode: 'static'
+            };
+
+            // Create encoder session
+            this.debugConsole.log('Creating quantized encoder ONNX session...', 'verbose');
+            this.encoderSession = await ort.InferenceSession.create(encoderData, sessionOptions);
+            this.debugConsole.log('Quantized encoder loaded successfully', 'info');
+
+            // Create decoder session
+            this.debugConsole.log('Creating quantized decoder ONNX session...', 'verbose');
+            this.decoderSession = await ort.InferenceSession.create(decoderData, sessionOptions);
+            this.debugConsole.log('Quantized decoder loaded successfully', 'info');
+
             progressCallback(95);
-            
-            // Initialize real tokenizer
             this.initializeTokenizer();
-            
             progressCallback(100);
-            
+
         } catch (error) {
-            this.debugConsole.log(`Model initialization failed: ${error.message}`, 'error');
-            this.debugConsole.log('Real model loading required - no fallback', 'error');
+            this.debugConsole.log(`Quantized model initialization failed: ${error.message}`, 'error');
             throw error;
         }
     }
 
-    async initializeFallbackModel(progressCallback) {
-        try {
-            progressCallback(90);
-            
-            this.debugConsole.log('Initializing fallback model (no ONNX runtime)', 'info');
-            
-            // Create a mock session for demonstration
-            this.session = {
-                run: async (feeds) => {
-                    // Mock inference that returns simple embeddings
-                    const mockEmbeddings = new Float32Array(50);
-                    for (let i = 0; i < 50; i++) {
-                        mockEmbeddings[i] = Math.random() - 0.5;
-                    }
-                    return {
-                        'output': {
-                            data: mockEmbeddings,
-                            dims: [1, 50]
-                        }
-                    };
-                }
-            };
-            
-            progressCallback(95);
-            
-            // Initialize tokenizer
-            this.initializeTokenizer();
-            
-            progressCallback(100);
-            
-            this.debugConsole.log('Fallback model initialized successfully', 'info');
-            
-        } catch (error) {
-            this.debugConsole.log(`Fallback model initialization failed: ${error.message}`, 'error');
-            throw error;
-        }
-    }
 
     initializeTokenizer() {
         // Simple mT5 tokenizer implementation
@@ -884,122 +528,40 @@ class ModelLoader {
     }
 
     async generateResponse(inputText) {
-        // Phase 1: Model Loading Verification
-        this.debugConsole.log(`=== DIAGNOSTIC START ===`, 'info');
-        this.debugConsole.log(`Input: "${inputText}"`, 'info');
-        this.debugConsole.log(`isLoaded: ${this.isLoaded}`, 'info');
-        this.debugConsole.log(`encoderSession: ${!!this.encoderSession}`, 'info');
-        this.debugConsole.log(`decoderSession: ${!!this.decoderSession}`, 'info');
-        this.debugConsole.log(`tokenizer: ${!!this.tokenizer}`, 'info');
-        
-        if (!this.isLoaded) {
-            this.debugConsole.log('Model not loaded - cannot generate response', 'error');
-            throw new Error('Model not loaded');
+        if (!this.isLoaded || !this.encoderSession || !this.decoderSession) {
+            throw new Error('Quantized models not loaded - cannot generate response');
         }
-        
-        // Diagnostic checks
-        this.debugConsole.log(`Encoder session: ${this.encoderSession ? 'loaded' : 'not loaded'}`, 'verbose');
-        this.debugConsole.log(`Decoder session: ${this.decoderSession ? 'loaded' : 'not loaded'}`, 'verbose');
-        this.debugConsole.log(`Tokenizer: ${this.tokenizer ? 'initialized' : 'not initialized'}`, 'verbose');
-        
-        if (!this.tokenizer) {
-            this.debugConsole.log('Tokenizer not initialized - initializing now', 'warn');
-            this.initializeTokenizer();
-        }
-        
+
         try {
             const startTime = performance.now();
-            
-            // Store original input text for Ma'aseh analysis
-            this.currentInputText = inputText;
-            
-            // Check if we have a system prompt configured
-            const systemPrompt = CONFIG?.models?.mt5?.system_prompt || 'You are a helpful AI assistant.';
+
+            // Use the existing system prompt
+            const systemPrompt = CONFIG.models.mt5.system_prompt;
             const fullInput = `${systemPrompt}\n\nUser: ${inputText}\n\nAssistant:`;
-            
-            // Phase 2: Tokenization Analysis
+
+            // Tokenize input
             const inputTokens = this.tokenizer.encode(fullInput);
-            this.debugConsole.log(`Tokenized input: ${JSON.stringify(inputTokens.slice(0, 20))}...`, 'verbose');
-            this.debugConsole.log(`Token count: ${inputTokens.length}`, 'verbose');
-            
-            // Run real model inference with system context
-            const output = await this.runInference(inputTokens);
-            
+            this.debugConsole.log(`Tokenized input: ${inputTokens.length} tokens`, 'verbose');
+
+            // Run full two-phase inference
+            const output = await this.runFullInference(inputTokens);
+
             const endTime = performance.now();
             this.debugConsole.log(`Response generated in ${(endTime - startTime).toFixed(2)}ms`, 'verbose');
-            
-            this.debugConsole.log(`=== DIAGNOSTIC END ===`, 'info');
+
             return output;
-            
+
         } catch (error) {
             this.debugConsole.log(`Response generation failed: ${error.message}`, 'error');
-            this.debugConsole.log(`Error stack: ${error.stack}`, 'verbose');
-            
-            // Fallback to simple Ma'aseh response if all else fails
-            this.debugConsole.log('Attempting emergency fallback response', 'warn');
-            try {
-                return this.getEmergencyResponse(inputText);
-            } catch (fallbackError) {
-                this.debugConsole.log(`Emergency fallback also failed: ${fallbackError.message}`, 'error');
-                throw error; // Throw original error
-            }
+            throw error; // No fallback - must work with quantized models
         }
     }
 
-    async runInference(inputTokens) {
-        // Enhanced memory monitoring and pre-allocation checks
-        if (performance.memory) {
-            const memInfo = performance.memory;
-            const usedMemoryMB = memInfo.usedJSHeapSize / 1024 / 1024;
-            const totalMemoryMB = memInfo.jsHeapSizeLimit / 1024 / 1024;
-            const availableMemoryMB = totalMemoryMB - usedMemoryMB;
-            
-            this.debugConsole.log(`Memory status: ${usedMemoryMB.toFixed(2)}MB used, ${availableMemoryMB.toFixed(2)}MB available of ${totalMemoryMB.toFixed(2)}MB total`, 'verbose');
-            
-            // Warn if memory usage is high
-            if (usedMemoryMB > (CONFIG.performance.memory_warning_threshold / 1024 / 1024)) {
-                this.debugConsole.log('High memory usage detected - inference may be slower', 'warn');
-            }
-            
-            // Check if we have enough memory for decoder inference
-            if (this.decoderSession && availableMemoryMB < 200) {
-                this.debugConsole.log('Low memory warning - decoder inference may fail', 'warn');
-            }
-            
-            // Trigger garbage collection if available (for development/debugging)
-            if (typeof window !== 'undefined' && window.gc && availableMemoryMB < 300) {
-                this.debugConsole.log('Triggering garbage collection due to low memory', 'verbose');
-                window.gc();
-            }
-        }
-        
-        if (!this.encoderSession) {
-            throw new Error('Encoder session not initialized');
-        }
-        
-        try {
-            // Stage 1: Always run encoder
-            const encoderHiddenStates = await this.runEncoderInference(inputTokens);
-            
-            // Phase 3: Response Path Tracking
-            if (this.decoderSession) {
-                this.debugConsole.log(`Using FULL AI MODE (decoder)`, 'info');
-                const generatedText = await this.runDecoderInference(encoderHiddenStates, inputTokens);
-                return generatedText;
-            } else {
-                this.debugConsole.log(`Using QUICK MODE (encoder + Ma'aseh)`, 'info');
-                const contextualResponse = await this.generateMaasehResponse(encoderHiddenStates, inputTokens, this.currentInputText || '');
-                return contextualResponse;
-            }
-            
-        } catch (error) {
-            this.debugConsole.log(`Inference failed: ${error.message}`, 'error');
-            this.debugConsole.log(`Inference error stack: ${error.stack}`, 'verbose');
-            
-            // If encoder or Ma'aseh response fails, provide emergency response
-            this.debugConsole.log('Inference failed - using emergency response pattern', 'warn');
-            return this.getEmergencyResponse(this.currentInputText || 'help');
-        }
+    async runFullInference(inputTokens) {
+        // Always run both encoder and decoder
+        const encoderHiddenStates = await this.runEncoderInference(inputTokens);
+        const generatedText = await this.runDecoderInference(encoderHiddenStates, inputTokens);
+        return generatedText;
     }
 
     async runEncoderInference(inputTokens) {
@@ -1092,388 +654,11 @@ class ModelLoader {
         return words.join(' ').replace(/<[^>]*>/g, '').trim();
     }
 
-    async generateMaasehResponse(encoderHiddenStates, inputTokens, originalText = '') {
-        try {
-            // Extract encoder embeddings for analysis
-            const embeddings = Array.from(encoderHiddenStates.data);
-            
-            // Comprehensive semantic analysis using real encoder embeddings
-            const analysis = this.analyzeEncoderEmbeddings(embeddings, inputTokens, originalText);
-            
-            // Determine Ma'aseh step based on analysis
-            const maasehStep = this.determineMaasehStep(analysis);
-            
-            // Generate contextual response following Ma'aseh protocol
-            const response = this.generateMaasehStepResponse(maasehStep, analysis);
-            
-            this.debugConsole.log(`Ma'aseh step ${maasehStep} applied based on analysis`, 'verbose');
-            
-            return response;
-            
-        } catch (error) {
-            this.debugConsole.log(`Ma'aseh response generation failed: ${error.message}`, 'error');
-            this.debugConsole.log(`Ma'aseh error stack: ${error.stack}`, 'verbose');
-            
-            // Use emergency response system for better fallback
-            this.debugConsole.log('Ma\'aseh failed - using emergency response', 'warn');
-            return this.getEmergencyResponse(originalText || 'help');
-        }
-    }
 
-    analyzeEncoderEmbeddings(embeddings, inputTokens, originalText) {
-        // Multi-dimensional analysis of real encoder embeddings
-        const analysis = {
-            // Store original text for reference
-            originalText: originalText,
-            
-            // Basic embedding statistics
-            magnitude: Math.sqrt(embeddings.slice(0, 500).reduce((sum, val) => sum + val * val, 0)),
-            mean: embeddings.slice(0, 500).reduce((sum, val) => sum + val, 0) / 500,
-            variance: 0,
-            
-            // Semantic analysis
-            emotionalValence: 0,  // positive/negative emotional content
-            urgencyLevel: 0,      // crisis urgency indicators
-            coherenceLevel: 0,    // cognitive organization
-            supportNeed: 'emotional', // type of support needed
-            
-            // Content analysis
-            crisisKeywords: [],
-            emotionalKeywords: [],
-            actionKeywords: [],
-            timeKeywords: [],
-            
-            // Ma'aseh indicators
-            needsCommitment: false,
-            needsActivation: false,
-            needsThinking: false,
-            needsFraming: false
-        };
-        
-        // Calculate variance
-        analysis.variance = embeddings.slice(0, 500).reduce((sum, val) => 
-            sum + Math.pow(val - analysis.mean, 2), 0) / 500;
-        
-        // Analyze input tokens for semantic content
-        const reverseVocab = {};
-        for (const [word, id] of Object.entries(this.tokenizer.vocab)) {
-            reverseVocab[id] = word;
-        }
-        
-        const words = inputTokens.map(id => reverseVocab[id] || '').filter(w => w);
-        const text = originalText.toLowerCase() || words.join(' ');
-        
-        // Enhanced Crisis situation detection - Israeli context + family trauma
-        const crisisTerms = [
-            // Physical harm
-            'bleeding', 'blood', 'hurt', 'injured', 'pain', 'wound', 'bruised', 'broken',
-            // Family distress
-            'mommy', 'daddy', 'crying', 'screaming', 'scared', 'mama', 'papa', 'mom', 'dad',
-            // Israeli security context
-            'bombing', 'explosion', 'sirens', 'attack', 'danger', 'emergency', 'help',
-            'rocket', 'missile', 'azaka', 'alarm', 'incoming', 'impact', 'debris', 'shrapnel',
-            'miklat', 'mamad', 'shelter', 'protected', 'iron', 'dome', 'intercepted', 'blast'
-        ];
-        analysis.crisisKeywords = crisisTerms.filter(term => text.includes(term));
-        
-        // Child user detection
-        const childKeywords = ['mommy', 'daddy', 'mama', 'papa', 'mom', 'dad'];
-        analysis.isChildUser = childKeywords.some(keyword => text.includes(keyword));
-        
-        // Enhanced emotional state detection - including trauma responses and crisis emotions
-        const negativeTerms = [
-            'scared', 'afraid', 'panic', 'hopeless', 'alone', 'overwhelmed', 'confused',
-            'flashback', 'nightmare', 'hypervigilant', 'numb', 'disconnected', 'unbalanced',
-            'shattered', 'stuck', 'frozen', 'intrusive', 'startle', 'jumpy', 'edgy', 'tense',
-            // Crisis emotional states
-            'stressed', 'anxious', 'worried', 'terrified', 'crying', 'screaming', 'bleeding'
-        ];
-        const positiveTerms = [
-            'better', 'calm', 'safe', 'relief', 'hope', 'improving', 'protected', 'secure',
-            'stable', 'connected', 'grounded', 'supported', 'reassured', 'comforted'
-        ];
-        
-        analysis.emotionalKeywords = [
-            ...negativeTerms.filter(term => text.includes(term)),
-            ...positiveTerms.filter(term => text.includes(term))
-        ];
-        
-        // Determine emotional valence from embeddings and keywords
-        const negativeCount = negativeTerms.filter(term => text.includes(term)).length;
-        const positiveCount = positiveTerms.filter(term => text.includes(term)).length;
-        analysis.emotionalValence = positiveCount - negativeCount;
-        
-        // Enhanced urgency level calculation - crisis keywords have higher weight
-        const crisisWeight = analysis.crisisKeywords.length * 2; // Double weight for crisis keywords
-        const embeddingBoost = analysis.magnitude > 15 ? 2 : 0;
-        analysis.urgencyLevel = crisisWeight + embeddingBoost;
-        
-        // Special urgency boost for security threats
-        const securityKeywords = ['rocket', 'rockets', 'missile', 'bombing', 'explosion', 'attack', 'sirens'];
-        if (securityKeywords.some(keyword => text.includes(keyword))) {
-            analysis.urgencyLevel += 3; // High priority for security threats
-        }
-        
-        // Coherence level based on embedding variance and structure
-        analysis.coherenceLevel = analysis.variance < 0.5 ? 'high' : 
-                                 analysis.variance < 1.5 ? 'medium' : 'low';
-        
-        // Determine Ma'aseh step needs with child context
-        analysis.needsCommitment = negativeCount > 0 || analysis.emotionalValence < -1 || analysis.isChildUser;
-        analysis.needsActivation = text.includes('stuck') || text.includes('helpless') || 
-                                  text.includes('can\'t') || analysis.coherenceLevel === 'low';
-        analysis.needsThinking = text.includes('confused') || text.includes('don\'t know') ||
-                                analysis.coherenceLevel === 'low';
-        analysis.needsFraming = text.includes('happened') || text.includes('before') ||
-                               text.includes('when') || analysis.urgencyLevel > 2;
-        
-        // Enhanced Ma'aseh analysis logging
-        this.debugConsole.log(`=== Ma'aseh ANALYSIS ===`, 'info');
-        this.debugConsole.log(`Original text: "${originalText}"`, 'verbose');
-        this.debugConsole.log(`Crisis keywords found: ${JSON.stringify(analysis.crisisKeywords)}`, 'info');
-        this.debugConsole.log(`Emotional keywords found: ${JSON.stringify(analysis.emotionalKeywords)}`, 'info');
-        this.debugConsole.log(`Child user detected: ${analysis.isChildUser}`, 'info');
-        this.debugConsole.log(`Urgency level: ${analysis.urgencyLevel}`, 'info');
-        this.debugConsole.log(`Emotional valence: ${analysis.emotionalValence}`, 'info');
-        
-        return analysis;
-    }
 
-    determineMaasehStep(analysis) {
-        // Enhanced Priority-based Ma'aseh step selection with child priority
-        
-        // HIGHEST PRIORITY: Child in crisis
-        if (analysis.isChildUser && analysis.urgencyLevel > 2) {
-            this.debugConsole.log(`Child crisis detected - selecting Ma'aseh step 1 (COMMITMENT)`, 'info');
-            return 1; // COMMITMENT with child-specific language
-        }
-        
-        // SECOND PRIORITY: Physical harm indicators
-        const physicalHarmKeywords = ['bleeding', 'blood', 'hurt', 'injured', 'pain'];
-        const originalText = analysis.originalText || '';
-        if (physicalHarmKeywords.some(keyword => originalText.toLowerCase().includes(keyword))) {
-            this.debugConsole.log(`Physical harm detected - selecting Ma'aseh step 1 (COMMITMENT)`, 'info');
-            return 1; // COMMITMENT - immediate presence
-        }
-        
-        // Existing priority logic
-        if (analysis.needsCommitment && (analysis.emotionalValence < -2 || analysis.urgencyLevel > 3)) {
-            this.debugConsole.log(`Severe distress detected - selecting Ma'aseh step 1 (COMMITMENT)`, 'info');
-            return 1; // COMMITMENT - highest priority for severe distress
-        }
-        
-        if (analysis.needsFraming && analysis.urgencyLevel > 2) {
-            this.debugConsole.log(`Crisis confusion detected - selecting Ma'aseh step 4 (FRAMING)`, 'info');
-            return 4; // CHRONOLOGICAL FRAMING - for acute crisis confusion
-        }
-        
-        if (analysis.needsThinking && analysis.coherenceLevel === 'low') {
-            this.debugConsole.log(`Cognitive disorganization detected - selecting Ma'aseh step 3 (THINKING)`, 'info');
-            return 3; // THINKING QUESTIONS - for cognitive disorganization
-        }
-        
-        if (analysis.needsActivation) {
-            this.debugConsole.log(`Activation needed - selecting Ma'aseh step 2 (ACTIVATION)`, 'info');
-            return 2; // ACTIVATION - for stuck or helpless feelings
-        }
-        
-        // Default to commitment for basic emotional support
-        this.debugConsole.log(`Default case - selecting Ma'aseh step 1 (COMMITMENT)`, 'info');
-        return 1;
-    }
 
-    generateMaasehStepResponse(step, analysis) {
-        const responses = {
-            1: { // COMMITMENT
-                child_crisis: [
-                    "I can see this is really scary. Are you somewhere safe right now? I'm going to help you and stay with you.",
-                    "This sounds very frightening. You're being very brave by asking for help. Can you tell me - are you in a safe place?",
-                    "I'm here with you, and you're not alone. This must be so scary. Can you look around and tell me if you're somewhere protected?",
-                    "You're doing the right thing by talking to me. I'm staying right here with you. Are you somewhere safe where grown-ups can help?"
-                ],
-                high_urgency: [
-                    "I'm here with you right now, and I'm not going anywhere. You're not facing this alone.",
-                    "I hear you, and I'm staying right here with you through this difficult moment.",
-                    "You're not alone in this. I'm here, and we're going to get through this together.",
-                    "I'm right here with you. You don't have to handle this by yourself."
-                ],
-                medium_urgency: [
-                    "I'm here with you and I can hear this is really difficult. You're not alone in facing this.",
-                    "I'm staying right here with you through this challenging situation. You did the right thing by reaching out.",
-                    "I can sense this is weighing heavily on you. I'm here and fully present with you right now.",
-                    "This sounds really tough, and I want you to know you have my complete attention and support."
-                ],
-                low_urgency: [
-                    "I'm here with you. What would be most helpful right now?",
-                    "I'm listening and I'm here to support you.",
-                    "Thank you for sharing with me. I'm here to help.",
-                    "I'm present with you. How can I best support you?"
-                ]
-            },
-            
-            2: { // ACTIVATION
-                crisis_context: [
-                    "You're already doing something important by reaching out. Can you help me by taking one slow, deep breath right now?",
-                    "You've taken a crucial step by asking for help. Can you help me by looking around and naming one thing you can see that feels solid or safe?",
-                    "You're being smart by staying where you are. Can you help me by checking - do you have water or anything to drink nearby?",
-                    "You're handling this by reaching out. Would you prefer to focus on your breathing first, or checking what supplies you have with you?"
-                ],
-                general: [
-                    "You're already taking action by talking to me. Can you help me by choosing one small thing you could do right now - maybe taking a deep breath or getting a glass of water?",
-                    "Let's work on this together. Would you prefer to start with organizing your thoughts, or taking a small action to feel more comfortable?",
-                    "You have more control than it might feel like. Can you help me by deciding - would you like to focus on your immediate space or talk about what you need most right now?"
-                ]
-            },
-            
-            3: { // THINKING QUESTIONS
-                crisis_context: [
-                    "Let's focus on the facts right now. Can you tell me - where exactly are you at this moment?",
-                    "I want to understand your situation clearly. What's the first thing you remember doing when this started?",
-                    "Help me get a clear picture. What can you see around you right now in your space?",
-                    "Let's organize this step by step. What was happening just before you reached out to me?"
-                ],
-                confusion: [
-                    "Let's slow this down and think through it clearly. What's one thing you're certain about right now?",
-                    "Help me understand the sequence. What happened first, and then what came next?",
-                    "Let's get the timeline straight. When did you first notice this situation beginning?",
-                    "Think back step by step. What was the very first thing that happened today that felt different?"
-                ],
-                general: [
-                    "Let's think through this logically. What specific details can you remember about when this started?",
-                    "Help me understand the situation clearly. What facts are you most sure about?",
-                    "Let's organize the information. What are the most important things happening right now?"
-                ]
-            },
-            
-            4: { // CHRONOLOGICAL FRAMING
-                crisis_context: [
-                    "Let me help you organize what's happened. You were going about your day, then the situation began, and now you're here in safety talking with me. This crisis will have an end.",
-                    "Here's the sequence: before this emergency, you were managing your life normally. Right now, you're in the middle of handling this crisis by staying safe and getting support. This acute phase will pass.",
-                    "Let's put this in order: earlier today you were safe, then this crisis situation developed, now you're actively managing it by sheltering and reaching out. You will get through this period.",
-                    "The timeline is: normal day, crisis began, you took protective action, you're getting support now. This emergency situation has a beginning, middle, and it will have an end."
-                ],
-                confusion: [
-                    "Let me help organize this sequence for you. First this happened, then that led to this next thing, and now we're here working on it together. There's a clear order to events.",
-                    "Here's how things unfolded: the situation started with [specific event], which led to [next event], and now you're here taking positive steps to manage it.",
-                    "The sequence is becoming clearer: before, during, and after. You're currently in the 'during' phase, and we're preparing you for the 'after' phase."
-                ],
-                general: [
-                    "Let's organize the timeline. There was before this situation, there's the current situation we're in now, and there will be after this situation. You're actively working through the middle part.",
-                    "Here's the sequence: things were stable, then this challenge arose, now you're actively addressing it, and you'll move through to resolution."
-                ]
-            }
-        };
-        
-        const stepResponses = responses[step];
-        let responseArray;
-        
-        // Enhanced response selection with child crisis priority
-        if (step === 1) { // COMMITMENT
-            if (analysis.isChildUser && analysis.crisisKeywords.length > 0) {
-                responseArray = stepResponses.child_crisis;
-                this.debugConsole.log(`Selected child crisis response pattern`, 'info');
-            } else if (analysis.urgencyLevel >= 4) { // Lowered threshold for high urgency
-                responseArray = stepResponses.high_urgency;
-                this.debugConsole.log(`Selected high urgency response pattern (urgency: ${analysis.urgencyLevel})`, 'info');
-            } else if (analysis.urgencyLevel >= 2) { // Any crisis keywords trigger medium urgency
-                responseArray = stepResponses.medium_urgency;
-                this.debugConsole.log(`Selected medium urgency response pattern (urgency: ${analysis.urgencyLevel})`, 'info');
-            } else {
-                responseArray = stepResponses.low_urgency;
-                this.debugConsole.log(`Selected low urgency response pattern (urgency: ${analysis.urgencyLevel})`, 'info');
-            }
-        } else if (step === 2) { // ACTIVATION
-            responseArray = analysis.crisisKeywords.length > 0 ? 
-                           stepResponses.crisis_context : stepResponses.general;
-        } else if (step === 3) { // THINKING QUESTIONS
-            if (analysis.crisisKeywords.length > 0) responseArray = stepResponses.crisis_context;
-            else if (analysis.coherenceLevel === 'low') responseArray = stepResponses.confusion;
-            else responseArray = stepResponses.general;
-        } else if (step === 4) { // CHRONOLOGICAL FRAMING
-            if (analysis.crisisKeywords.length > 0) responseArray = stepResponses.crisis_context;
-            else if (analysis.coherenceLevel === 'low') responseArray = stepResponses.confusion;
-            else responseArray = stepResponses.general;
-        }
-        
-        // Select response using embedding variance for variation
-        const responseIndex = Math.floor((analysis.variance * 1000) % responseArray.length);
-        const selectedResponse = responseArray[responseIndex];
-        
-        this.debugConsole.log(`Ma'aseh step ${step} applied with response index ${responseIndex}`, 'info');
-        this.debugConsole.log(`Selected response: "${selectedResponse.substring(0, 50)}..."`, 'verbose');
-        
-        return selectedResponse;
-    }
 
-    getEmergencyResponse(inputText) {
-        this.debugConsole.log('Using emergency response fallback', 'info');
-        
-        const lowerInput = inputText.toLowerCase();
-        
-        // Enhanced crisis response patterns - match main crisis detection
-        const crisisKeywords = [
-            // Physical harm
-            'bleeding', 'blood', 'hurt', 'injured', 'pain', 'wound', 'bruised', 'broken',
-            // Family distress
-            'mommy', 'daddy', 'crying', 'screaming', 'scared', 'mama', 'papa', 'mom', 'dad',
-            // Israeli security context
-            'bombing', 'explosion', 'sirens', 'attack', 'danger', 'emergency', 'help', 'afraid', 'panic',
-            'rocket', 'rockets', 'missile', 'azaka', 'alarm', 'incoming', 'impact', 'debris', 'shrapnel',
-            'miklat', 'mamad', 'shelter', 'protected', 'iron', 'dome', 'intercepted', 'blast',
-            // Emotional distress
-            'stressed', 'overwhelmed', 'anxious', 'worried'
-        ];
-        const isCrisis = crisisKeywords.some(keyword => lowerInput.includes(keyword));
-        
-        if (isCrisis) {
-            const crisisResponses = [
-                "I'm here with you right now. You're not alone in this. Can you tell me where you are and if you're in a safe place?",
-                "I hear that you're scared. That's completely understandable. Are you somewhere safe right now?",
-                "I'm staying right here with you. You don't have to face this alone. What's happening around you right now?"
-            ];
-            return crisisResponses[Math.floor(Math.random() * crisisResponses.length)];
-        }
-        
-        // Emotional state responses
-        const sadKeywords = ['sad', 'depressed', 'down', 'hopeless', 'crying'];
-        const anxiousKeywords = ['worried', 'anxious', 'stressed', 'overwhelmed'];
-        
-        if (sadKeywords.some(keyword => lowerInput.includes(keyword))) {
-            const sadResponses = [
-                "I can hear that you're going through a really difficult time. Thank you for sharing that with me. How long have you been feeling this way?",
-                "That sounds incredibly hard. I'm here to listen and support you. What's been the most challenging part?",
-                "I'm glad you reached out. It takes courage to share when you're struggling. What would feel most helpful right now?"
-            ];
-            return sadResponses[Math.floor(Math.random() * sadResponses.length)];
-        }
-        
-        if (anxiousKeywords.some(keyword => lowerInput.includes(keyword))) {
-            const anxiousResponses = [
-                "I can sense that you're feeling anxious. That must be really uncomfortable. What's been going through your mind?",
-                "Anxiety can feel overwhelming. I'm here with you. Can you tell me what's been worrying you most?",
-                "Thank you for sharing that you're feeling anxious. What's been contributing to these feelings lately?"
-            ];
-            return anxiousResponses[Math.floor(Math.random() * anxiousResponses.length)];
-        }
-        
-        // General therapeutic responses
-        const generalResponses = [
-            "I'm here and I'm listening. Thank you for sharing that with me. Can you tell me more about what's on your mind?",
-            "I appreciate you reaching out. How are you feeling about everything right now?",
-            "Thank you for trusting me with that. What's been the most important thing on your mind lately?",
-            "I'm here to support you. What would be most helpful for us to talk about today?",
-            "I can hear that there's a lot going on for you. What feels most pressing right now?"
-        ];
-        
-        return generalResponses[Math.floor(Math.random() * generalResponses.length)];
-    }
 
-    // Old fake decoder method - now replaced with Ma'aseh protocol
-    generateResponseFromEmbeddings(embeddings, inputTokens) {
-        // This method is deprecated - Ma'aseh protocol now used in encoder-only mode
-        this.debugConsole.log('Warning: generateResponseFromEmbeddings called but deprecated', 'warn');
-        return "Enhanced Ma'aseh protocol active - this fallback should not be reached.";
-    }
 
     async clearCache() {
         if (!this.modelCache) return;

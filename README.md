@@ -1,4 +1,4 @@
-# AI Therapy Assistant Demo
+# AI Therapy Assistant Demo - Quant v0.0.1
 
 A web-based demonstration of an AI therapy assistant with speech recognition, emotional state detection, and offline capabilities.
 
@@ -6,10 +6,17 @@ A web-based demonstration of an AI therapy assistant with speech recognition, em
 
 This project demonstrates a therapy assistant interface that can:
 - Accept text and voice input
-- Provide supportive responses using an mT5 language model
+- Provide supportive responses using quantized mT5 language models (INT8)
+- Run efficiently in browsers with reduced memory footprint (~430MB total)
 - Detect and display emotional states through visual feedback
 - Operate completely offline after initial setup
 - Provide debugging and development tools
+
+**Quant v0.0.1 Features:**
+- **75% memory reduction** compared to previous versions
+- **Quantized INT8 models** for faster loading and inference
+- **Streamlined architecture** with no fallback modes
+- **Mobile browser compatible** (~550MB total PWA memory usage)
 
 **Created by the CALMe Team for educational and demonstration purposes.**
 
