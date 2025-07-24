@@ -43,7 +43,8 @@ class TherapyAssistant {
             }
         } catch (error) {
             this.debugConsole.log(`Initialization error: ${error.message}`, 'error');
-            this.showError('Failed to initialize the application. Please refresh and try again.');
+            this.debugConsole.log(`Error stack: ${error.stack}`, 'verbose');
+            this.showError(`Failed to initialize the application: ${error.message}. Please check the debug console for details.`);
         }
     }
 

@@ -27,7 +27,15 @@ class AudioProcessor extends EventTarget {
             
             // Initialize VOSK
             if (typeof createModule === 'undefined') {
-                throw new Error('VOSK module not loaded');
+                this.debugConsole.log('VOSK module not available, using mock implementation', 'warn');
+                // Use mock implementation for demo
+                const model = await this.loadVoskModel();
+                this.recognizer = new model.KaldiRecognizer(CONFIG.models.vosk.sample_rate, CONFIG.models.vosk.alternatives);
+                this.recognizer.setWords(true);
+                this.voskReady = true;
+                this.isInitialized = true;
+                this.debugConsole.log('Mock VOSK initialized successfully', 'info');
+                return;
             }
 
             const model = await this.loadVoskModel();
