@@ -496,9 +496,15 @@ class ModelLoader {
             // Prepare input tensor for mT5 encoder
             const inputTensor = new ort.Tensor('int64', BigInt64Array.from(inputTokens.map(id => BigInt(id))), [1, inputTokens.length]);
             
+            // Create encoder attention mask (same shape as input_ids, filled with 1s)
+            const attentionMask = new ort.Tensor('int64', BigInt64Array.from(new Array(inputTokens.length).fill(1n)), [1, inputTokens.length]);
+            
             // Run inference on the real ONNX model
             this.debugConsole.log('Running real mT5 model inference', 'verbose');
-            const feeds = { input_ids: inputTensor };
+            const feeds = { 
+                input_ids: inputTensor,
+                encoder_attention_mask: attentionMask
+            };
             const results = await this.session.run(feeds);
             
             // Extract output (this is encoder output, not final text)
