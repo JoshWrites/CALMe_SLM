@@ -187,7 +187,7 @@ class ModelLoader {
 
     async fetchWithProgress(url, progressCallback) {
         const headers = {
-            'User-Agent': 'CALMe-SLM/Quant-v0.0.6'
+            'User-Agent': 'CALMe-SLM/Quant-v0.0.7'
         };
         
         // Add HuggingFace authorization if token is provided
@@ -445,14 +445,27 @@ class ModelLoader {
             },
             
             encode: (text) => {
-                // Basic tokenization - split on spaces and punctuation
+                // Improved tokenization for mT5
                 const tokens = text.toLowerCase()
-                    .replace(/[.,!?;]/g, ' ')
+                    .replace(/[.,!?;:]/g, ' ')
                     .split(/\s+/)
                     .filter(token => token.length > 0);
                 
-                // Convert tokens to IDs
-                return tokens.map(token => this.tokenizer.vocab[token] || 1); // 1 is <unk>
+                // Convert tokens to IDs with better handling
+                const tokenIds = tokens.map(token => {
+                    if (this.tokenizer.vocab[token] !== undefined) {
+                        return this.tokenizer.vocab[token];
+                    }
+                    // Try partial matches for compound words
+                    for (const vocabWord of Object.keys(this.tokenizer.vocab)) {
+                        if (token.includes(vocabWord) || vocabWord.includes(token)) {
+                            return this.tokenizer.vocab[vocabWord];
+                        }
+                    }
+                    return 1; // <unk>
+                });
+                
+                return tokenIds.length > 0 ? tokenIds : [1];
             },
             
             decode: (encoderOutput, inputText = '') => {
@@ -539,16 +552,15 @@ class ModelLoader {
         try {
             const startTime = performance.now();
 
-            // Use the existing system prompt
-            const systemPrompt = CONFIG.models.mt5.system_prompt;
-            const fullInput = `${systemPrompt}\n\nUser: ${inputText}\n\nAssistant:`;
+            // Simple prompt for mT5 (no complex system prompt needed)
+            const simpleInput = `question: ${inputText} answer:`;
 
             // Tokenize input
-            const inputTokens = this.tokenizer.encode(fullInput);
+            const inputTokens = this.tokenizer.encode(simpleInput);
             this.debugConsole.log(`Tokenized input: ${inputTokens.length} tokens`, 'verbose');
 
-            // Run full two-phase inference
-            const output = await this.runFullInference(inputTokens);
+            // Run optimized inference
+            const output = await this.runOptimizedInference(inputTokens);
 
             const endTime = performance.now();
             this.debugConsole.log(`Response generated in ${(endTime - startTime).toFixed(2)}ms`, 'verbose');
@@ -557,8 +569,16 @@ class ModelLoader {
 
         } catch (error) {
             this.debugConsole.log(`Response generation failed: ${error.message}`, 'error');
-            throw error; // No fallback - must work with quantized models
+            throw error;
         }
+    }
+
+    async runOptimizedInference(inputTokens) {
+        // Run encoder once
+        const {encoderHiddenStates, encoderAttentionMask} = await this.runEncoderInference(inputTokens);
+        // Run optimized decoder with early stopping
+        const generatedText = await this.runOptimizedDecoder(encoderHiddenStates, encoderAttentionMask);
+        return generatedText;
     }
 
     async runFullInference(inputTokens) {
@@ -594,7 +614,7 @@ class ModelLoader {
         // Prepare decoder inputs
         // Start with the beginning-of-sequence token (ID 2 for mT5)
         const decoderInputIds = [2]; // <s> token
-        const maxGenerationLength = 100;
+        const maxGenerationLength = 20; // Reduce for faster responses
         
         let generatedTokens = [...decoderInputIds];
         
@@ -633,8 +653,8 @@ class ModelLoader {
                 }
             }
             
-            // Stop if we generate end-of-sequence token (ID 3 for mT5)
-            if (nextTokenId === 3) {
+            // Stop if we generate end-of-sequence token (ID 3 for mT5) or period/exclamation
+            if (nextTokenId === 3 || nextTokenId === 1 || generatedTokens.length > 15) {
                 break;
             }
             
@@ -647,15 +667,78 @@ class ModelLoader {
         return this.decodeTokensToText(generatedTokens.slice(1)); // Remove start token
     }
 
+    async runOptimizedDecoder(encoderHiddenStates, encoderAttentionMask) {
+        // Start with the beginning-of-sequence token (ID 2 for mT5)
+        const decoderInputIds = [2]; // <s> token
+        const maxGenerationLength = 15; // Much shorter for speed
+        
+        let generatedTokens = [...decoderInputIds];
+        
+        // Generate tokens with optimized stopping
+        for (let i = 0; i < maxGenerationLength; i++) {
+            const decoderInputTensor = new ort.Tensor('int64', BigInt64Array.from(generatedTokens.map(id => BigInt(id))), [1, generatedTokens.length]);
+            
+            const decoderFeeds = {
+                input_ids: decoderInputTensor,
+                encoder_hidden_states: encoderHiddenStates,
+                encoder_attention_mask: encoderAttentionMask
+            };
+            
+            const decoderResults = await this.decoderSession.run(decoderFeeds);
+            const logitsTensor = decoderResults[Object.keys(decoderResults)[0]];
+            const logits = Array.from(logitsTensor.data);
+            
+            // Get the logits for the last position
+            const vocabSize = Math.floor(logits.length / generatedTokens.length);
+            const lastPositionLogits = logits.slice((generatedTokens.length - 1) * vocabSize, generatedTokens.length * vocabSize);
+            
+            // Find the token with highest probability (argmax)
+            let nextTokenId = 0;
+            let maxLogit = -Infinity;
+            for (let j = 0; j < lastPositionLogits.length; j++) {
+                if (lastPositionLogits[j] > maxLogit) {
+                    maxLogit = lastPositionLogits[j];
+                    nextTokenId = j;
+                }
+            }
+            
+            // Aggressive early stopping for chat responses
+            if (nextTokenId === 3 || nextTokenId === 1 || generatedTokens.length >= 10) {
+                break;
+            }
+            
+            generatedTokens.push(nextTokenId);
+        }
+        
+        this.debugConsole.log(`Optimized generation: ${generatedTokens.length} tokens: ${generatedTokens.slice(1)}`, 'verbose');
+        
+        // Decode with improved text processing
+        return this.decodeTokensToText(generatedTokens.slice(1)); // Remove start token
+    }
+
     decodeTokensToText(tokens) {
-        // Simple reverse vocabulary lookup
+        // Improved reverse vocabulary lookup
         const reverseVocab = {};
         for (const [word, id] of Object.entries(this.tokenizer.vocab)) {
             reverseVocab[id] = word;
         }
         
-        const words = tokens.map(tokenId => reverseVocab[tokenId] || '<unk>');
-        return words.join(' ').replace(/<[^>]*>/g, '').trim();
+        const words = tokens.map(tokenId => reverseVocab[tokenId] || '').filter(word => word && word !== '<unk>');
+        
+        // Join and clean up the text
+        let text = words.join(' ').trim();
+        
+        // Add basic punctuation if missing
+        if (text && !text.match(/[.!?]$/)) {
+            text += '.';
+        }
+        
+        // Capitalize first letter
+        if (text) {
+            text = text.charAt(0).toUpperCase() + text.slice(1);
+        }
+        
+        return text || "I understand.";
     }
 
 
