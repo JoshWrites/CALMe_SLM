@@ -233,21 +233,45 @@ class ModelLoader {
                 this.debugConsole.log('Loading real mT5 model with ONNX Runtime', 'info');
                 this.debugConsole.log(`ONNX Runtime version: ${ort.version || 'unknown'}`, 'verbose');
                 
+                // Test WebAssembly capability for ONNX
+                try {
+                    const testWasm = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+                    await WebAssembly.compile(testWasm);
+                    this.debugConsole.log('WebAssembly compilation test passed for ONNX', 'verbose');
+                } catch (wasmError) {
+                    this.debugConsole.log(`WebAssembly not available for ONNX: ${wasmError.message}`, 'warn');
+                    this.debugConsole.log('Falling back to demo mode', 'warn');
+                    await this.initializeFallbackModel(progressCallback);
+                    return;
+                }
+                
                 // Load the actual mT5 model
                 try {
-                    // Set ONNX Runtime execution providers and options
+                    // Set ONNX Runtime execution providers and options - prefer CPU to avoid WebGL issues
                     const sessionOptions = {
-                        executionProviders: ['webgl', 'cpu'],
-                        graphOptimizationLevel: 'all'
+                        executionProviders: ['cpu'],  // Start with CPU-only to avoid WebGL/WebAssembly conflicts
+                        graphOptimizationLevel: 'basic',  // Reduce optimization to avoid compilation issues
+                        enableMemPattern: false,  // Disable memory pattern optimization
+                        enableCpuMemArena: false   // Disable CPU memory arena
                     };
                     
+                    this.debugConsole.log('Creating ONNX session with CPU provider...', 'verbose');
                     this.session = await ort.InferenceSession.create(modelData, sessionOptions);
                     this.debugConsole.log('mT5 ONNX model loaded successfully', 'info');
-                    this.debugConsole.log(`Model input names: ${Object.keys(this.session.inputNames)}`, 'verbose');
-                    this.debugConsole.log(`Model output names: ${Object.keys(this.session.outputNames)}`, 'verbose');
+                    this.debugConsole.log(`Model input names: ${Object.keys(this.session.inputNames || {})}`, 'verbose');
+                    this.debugConsole.log(`Model output names: ${Object.keys(this.session.outputNames || {})}`, 'verbose');
                 } catch (error) {
-                    this.debugConsole.log(`Failed to load ONNX model: ${error.message}`, 'error');
-                    this.debugConsole.log(`Falling back to demo mode`, 'warn');
+                    const errorMsg = error.message || error.toString();
+                    this.debugConsole.log(`Failed to load ONNX model: ${errorMsg}`, 'error');
+                    
+                    // Provide specific error context
+                    if (errorMsg.includes('WebAssembly') || errorMsg.includes('wasm')) {
+                        this.debugConsole.log('WebAssembly compilation failed in ONNX Runtime', 'error');
+                    } else if (errorMsg.includes('memory') || errorMsg.includes('allocation')) {
+                        this.debugConsole.log('Memory allocation failed - model may be too large', 'error');
+                    }
+                    
+                    this.debugConsole.log('Falling back to demo mode', 'warn');
                     await this.initializeFallbackModel(progressCallback);
                     return;
                 }

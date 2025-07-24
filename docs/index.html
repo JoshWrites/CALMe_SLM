@@ -152,8 +152,23 @@
 
     <script src="lib/onnxruntime-web.min.js"></script>
     <script>
-        // Check ONNX Runtime loading
+        // Check WebAssembly support and library loading
         document.addEventListener('DOMContentLoaded', function() {
+            // Check WebAssembly support
+            if (typeof WebAssembly === 'undefined') {
+                console.error('❌ WebAssembly not supported in this browser');
+                alert('This browser does not support WebAssembly. Please use a modern browser like Chrome, Firefox, or Safari.');
+                return;
+            } else {
+                console.log('✅ WebAssembly supported');
+            }
+            
+            // Check HTTPS context (required for some WASM features)
+            if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+                console.warn('⚠️ Running over HTTP - some features may be limited. HTTPS recommended.');
+            }
+            
+            // Check ONNX Runtime loading
             setTimeout(() => {
                 if (typeof ort !== 'undefined') {
                     console.log('✅ ONNX Runtime loaded successfully:', ort.version || 'unknown version');

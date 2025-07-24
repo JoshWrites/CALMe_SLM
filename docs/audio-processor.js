@@ -90,6 +90,11 @@ class AudioProcessor extends EventTarget {
         try {
             this.debugConsole.log('Initializing VOSK speech recognition', 'info');
             
+            // Check WebAssembly support
+            if (typeof WebAssembly === 'undefined') {
+                throw new Error('WebAssembly not supported - falling back to Web Speech API');
+            }
+            
             // Load VOSK model
             await this.loadVoskModel();
             
@@ -97,8 +102,19 @@ class AudioProcessor extends EventTarget {
             this.debugConsole.log('VOSK speech recognition initialized successfully', 'info');
             
         } catch (error) {
-            this.debugConsole.log(`VOSK initialization failed: ${error.message}`, 'error');
-            throw error;
+            this.debugConsole.log(`VOSK initialization failed: ${error.message}`, 'warn');
+            this.debugConsole.log('Falling back to Web Speech API', 'info');
+            
+            // Fall back to Web Speech API
+            try {
+                this.setupWebSpeechFallback();
+                this.voskReady = true;
+                this.isInitialized = true;
+                this.debugConsole.log('Web Speech API fallback initialized successfully', 'info');
+            } catch (fallbackError) {
+                this.debugConsole.log(`Web Speech API fallback failed: ${fallbackError.message}`, 'error');
+                throw new Error('Both VOSK and Web Speech API failed to initialize');
+            }
         }
     }
 
@@ -106,9 +122,19 @@ class AudioProcessor extends EventTarget {
         try {
             this.debugConsole.log('Loading VOSK WebAssembly module', 'verbose');
             
-            // Initialize VOSK WebAssembly
+            // Check VOSK library availability
             if (typeof Vosk === 'undefined') {
                 throw new Error('VOSK library not loaded');
+            }
+            
+            // Test WebAssembly compilation capability
+            try {
+                // Try to compile a minimal WASM module to test capability
+                const testWasm = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+                await WebAssembly.compile(testWasm);
+                this.debugConsole.log('WebAssembly compilation test passed', 'verbose');
+            } catch (wasmError) {
+                throw new Error(`WebAssembly compilation failed: ${wasmError.message}`);
             }
             
             // Create model from URL (VOSK will handle download internally)
@@ -149,11 +175,22 @@ class AudioProcessor extends EventTarget {
                     break;
                 } catch (error) {
                     lastError = error;
-                    this.debugConsole.log(`Failed to load model from ${modelUrl}: ${error.message}`, 'warn');
+                    const errorMsg = error.message || error.toString();
+                    
+                    // Categorize errors for better debugging
+                    if (errorMsg.includes('CORS') || errorMsg.includes('blocked')) {
+                        this.debugConsole.log(`CORS error for ${modelUrl}: ${errorMsg}`, 'warn');
+                    } else if (errorMsg.includes('WebAssembly') || errorMsg.includes('wasm')) {
+                        this.debugConsole.log(`WebAssembly error for ${modelUrl}: ${errorMsg}`, 'warn');
+                    } else if (errorMsg.includes('404') || errorMsg.includes('Not Found')) {
+                        this.debugConsole.log(`Model not found at ${modelUrl}: ${errorMsg}`, 'warn');
+                    } else {
+                        this.debugConsole.log(`Failed to load model from ${modelUrl}: ${errorMsg}`, 'warn');
+                    }
                     
                     // Add delay between attempts to avoid overwhelming servers
                     if (i < modelUrls.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        await new Promise(resolve => setTimeout(resolve, 2000));
                     }
                 }
             }
