@@ -443,6 +443,7 @@ body {
     margin-bottom: 0.25rem;
     padding: 0.25rem;
     border-radius: 0.25rem;
+    color: #E2E8F0; /* Default readable light gray */
 }
 
 .debug-log.error {
@@ -461,7 +462,7 @@ body {
 }
 
 .debug-log.verbose {
-    color: #718096;
+    color: #A0AEC0; /* Lighter gray for verbose logs */
 }
 
 .debug-footer {
