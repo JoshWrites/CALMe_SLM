@@ -300,6 +300,20 @@ body {
     min-width: 400px;
 }
 
+.loading-version {
+    margin-bottom: 1rem;
+}
+
+.loading-version-text {
+    font-size: 0.875rem;
+    color: #718096;
+    font-family: monospace;
+    background-color: #F7FAFC;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    border: 1px solid #E2E8F0;
+}
+
 .progress-container {
     margin: 2rem 0;
 }
