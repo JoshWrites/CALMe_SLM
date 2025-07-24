@@ -117,6 +117,11 @@ class TherapyAssistant {
             const text = event.detail;
             this.debugConsole.log(`Speech recognition result: "${text}"`, 'verbose');
             document.getElementById('message-input').value = text;
+            
+            // Auto-send the message after voice input
+            setTimeout(() => {
+                this.sendMessage();
+            }, 500);
         });
         
         this.audioProcessor.addEventListener('audioLevel', (event) => {
