@@ -610,7 +610,7 @@ class ModelLoader {
             const decoderFeeds = {
                 input_ids: decoderInputTensor,
                 encoder_hidden_states: encoderHiddenStates,
-                attention_mask: decoderAttentionMask
+                decoder_attention_mask: decoderAttentionMask
             };
             
             const decoderResults = await this.decoderSession.run(decoderFeeds);
