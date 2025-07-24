@@ -357,7 +357,7 @@ class ModelLoader {
 
     async fetchWithProgress(url, progressCallback) {
         const headers = {
-            'User-Agent': 'CALMe-SLM/0.0.18'
+            'User-Agent': 'CALMe-SLM/0.0.19'
         };
         
         // Add HuggingFace authorization if token is provided
@@ -884,7 +884,13 @@ class ModelLoader {
     }
 
     async generateResponse(inputText) {
-        this.debugConsole.log(`Generating response for: "${inputText}"`, 'info');
+        // Phase 1: Model Loading Verification
+        this.debugConsole.log(`=== DIAGNOSTIC START ===`, 'info');
+        this.debugConsole.log(`Input: "${inputText}"`, 'info');
+        this.debugConsole.log(`isLoaded: ${this.isLoaded}`, 'info');
+        this.debugConsole.log(`encoderSession: ${!!this.encoderSession}`, 'info');
+        this.debugConsole.log(`decoderSession: ${!!this.decoderSession}`, 'info');
+        this.debugConsole.log(`tokenizer: ${!!this.tokenizer}`, 'info');
         
         if (!this.isLoaded) {
             this.debugConsole.log('Model not loaded - cannot generate response', 'error');
@@ -911,9 +917,10 @@ class ModelLoader {
             const systemPrompt = CONFIG?.models?.mt5?.system_prompt || 'You are a helpful AI assistant.';
             const fullInput = `${systemPrompt}\n\nUser: ${inputText}\n\nAssistant:`;
             
-            // Tokenize the full input including system prompt
+            // Phase 2: Tokenization Analysis
             const inputTokens = this.tokenizer.encode(fullInput);
-            this.debugConsole.log(`Input tokenized: ${inputTokens.length} tokens (including system prompt)`, 'verbose');
+            this.debugConsole.log(`Tokenized input: ${JSON.stringify(inputTokens.slice(0, 20))}...`, 'verbose');
+            this.debugConsole.log(`Token count: ${inputTokens.length}`, 'verbose');
             
             // Run real model inference with system context
             const output = await this.runInference(inputTokens);
@@ -921,6 +928,7 @@ class ModelLoader {
             const endTime = performance.now();
             this.debugConsole.log(`Response generated in ${(endTime - startTime).toFixed(2)}ms`, 'verbose');
             
+            this.debugConsole.log(`=== DIAGNOSTIC END ===`, 'info');
             return output;
             
         } catch (error) {
@@ -973,15 +981,13 @@ class ModelLoader {
             // Stage 1: Always run encoder
             const encoderHiddenStates = await this.runEncoderInference(inputTokens);
             
-            // Stage 2: Check if we have decoder or use intelligent fallback
+            // Phase 3: Response Path Tracking
             if (this.decoderSession) {
-                // Full AI mode: Use real decoder
-                this.debugConsole.log('Using real decoder for text generation', 'verbose');
+                this.debugConsole.log(`Using FULL AI MODE (decoder)`, 'info');
                 const generatedText = await this.runDecoderInference(encoderHiddenStates, inputTokens);
                 return generatedText;
             } else {
-                // Quick mode: Use intelligent encoder-based responses
-                this.debugConsole.log('Using encoder-only mode with Ma\'aseh protocol', 'verbose');
+                this.debugConsole.log(`Using QUICK MODE (encoder + Ma'aseh)`, 'info');
                 const contextualResponse = await this.generateMaasehResponse(encoderHiddenStates, inputTokens, this.currentInputText || '');
                 return contextualResponse;
             }
@@ -1117,6 +1123,9 @@ class ModelLoader {
     analyzeEncoderEmbeddings(embeddings, inputTokens, originalText) {
         // Multi-dimensional analysis of real encoder embeddings
         const analysis = {
+            // Store original text for reference
+            originalText: originalText,
+            
             // Basic embedding statistics
             magnitude: Math.sqrt(embeddings.slice(0, 500).reduce((sum, val) => sum + val * val, 0)),
             mean: embeddings.slice(0, 500).reduce((sum, val) => sum + val, 0) / 500,
@@ -1154,13 +1163,22 @@ class ModelLoader {
         const words = inputTokens.map(id => reverseVocab[id] || '').filter(w => w);
         const text = originalText.toLowerCase() || words.join(' ');
         
-        // Crisis situation detection - Israeli context
+        // Enhanced Crisis situation detection - Israeli context + family trauma
         const crisisTerms = [
-            'bombing', 'explosion', 'sirens', 'attack', 'danger', 'emergency', 'scared', 'help',
+            // Physical harm
+            'bleeding', 'blood', 'hurt', 'injured', 'pain', 'wound', 'bruised', 'broken',
+            // Family distress
+            'mommy', 'daddy', 'crying', 'screaming', 'scared', 'mama', 'papa', 'mom', 'dad',
+            // Israeli security context
+            'bombing', 'explosion', 'sirens', 'attack', 'danger', 'emergency', 'help',
             'rocket', 'missile', 'azaka', 'alarm', 'incoming', 'impact', 'debris', 'shrapnel',
             'miklat', 'mamad', 'shelter', 'protected', 'iron', 'dome', 'intercepted', 'blast'
         ];
         analysis.crisisKeywords = crisisTerms.filter(term => text.includes(term));
+        
+        // Child user detection
+        const childKeywords = ['mommy', 'daddy', 'mama', 'papa', 'mom', 'dad'];
+        analysis.isChildUser = childKeywords.some(keyword => text.includes(keyword));
         
         // Emotional state detection - including trauma responses
         const negativeTerms = [
@@ -1190,8 +1208,8 @@ class ModelLoader {
         analysis.coherenceLevel = analysis.variance < 0.5 ? 'high' : 
                                  analysis.variance < 1.5 ? 'medium' : 'low';
         
-        // Determine Ma'aseh step needs
-        analysis.needsCommitment = negativeCount > 0 || analysis.emotionalValence < -1;
+        // Determine Ma'aseh step needs with child context
+        analysis.needsCommitment = negativeCount > 0 || analysis.emotionalValence < -1 || analysis.isChildUser;
         analysis.needsActivation = text.includes('stuck') || text.includes('helpless') || 
                                   text.includes('can\'t') || analysis.coherenceLevel === 'low';
         analysis.needsThinking = text.includes('confused') || text.includes('don\'t know') ||
@@ -1199,34 +1217,70 @@ class ModelLoader {
         analysis.needsFraming = text.includes('happened') || text.includes('before') ||
                                text.includes('when') || analysis.urgencyLevel > 2;
         
+        // Enhanced Ma'aseh analysis logging
+        this.debugConsole.log(`=== Ma'aseh ANALYSIS ===`, 'info');
+        this.debugConsole.log(`Original text: "${originalText}"`, 'verbose');
+        this.debugConsole.log(`Crisis keywords found: ${JSON.stringify(analysis.crisisKeywords)}`, 'info');
+        this.debugConsole.log(`Emotional keywords found: ${JSON.stringify(analysis.emotionalKeywords)}`, 'info');
+        this.debugConsole.log(`Child user detected: ${analysis.isChildUser}`, 'info');
+        this.debugConsole.log(`Urgency level: ${analysis.urgencyLevel}`, 'info');
+        this.debugConsole.log(`Emotional valence: ${analysis.emotionalValence}`, 'info');
+        
         return analysis;
     }
 
     determineMaasehStep(analysis) {
-        // Priority-based Ma'aseh step selection
+        // Enhanced Priority-based Ma'aseh step selection with child priority
+        
+        // HIGHEST PRIORITY: Child in crisis
+        if (analysis.isChildUser && analysis.urgencyLevel > 2) {
+            this.debugConsole.log(`Child crisis detected - selecting Ma'aseh step 1 (COMMITMENT)`, 'info');
+            return 1; // COMMITMENT with child-specific language
+        }
+        
+        // SECOND PRIORITY: Physical harm indicators
+        const physicalHarmKeywords = ['bleeding', 'blood', 'hurt', 'injured', 'pain'];
+        const originalText = analysis.originalText || '';
+        if (physicalHarmKeywords.some(keyword => originalText.toLowerCase().includes(keyword))) {
+            this.debugConsole.log(`Physical harm detected - selecting Ma'aseh step 1 (COMMITMENT)`, 'info');
+            return 1; // COMMITMENT - immediate presence
+        }
+        
+        // Existing priority logic
         if (analysis.needsCommitment && (analysis.emotionalValence < -2 || analysis.urgencyLevel > 3)) {
+            this.debugConsole.log(`Severe distress detected - selecting Ma'aseh step 1 (COMMITMENT)`, 'info');
             return 1; // COMMITMENT - highest priority for severe distress
         }
         
         if (analysis.needsFraming && analysis.urgencyLevel > 2) {
+            this.debugConsole.log(`Crisis confusion detected - selecting Ma'aseh step 4 (FRAMING)`, 'info');
             return 4; // CHRONOLOGICAL FRAMING - for acute crisis confusion
         }
         
         if (analysis.needsThinking && analysis.coherenceLevel === 'low') {
+            this.debugConsole.log(`Cognitive disorganization detected - selecting Ma'aseh step 3 (THINKING)`, 'info');
             return 3; // THINKING QUESTIONS - for cognitive disorganization
         }
         
         if (analysis.needsActivation) {
-            return 2; // ACTIVATION - for helplessness
+            this.debugConsole.log(`Activation needed - selecting Ma'aseh step 2 (ACTIVATION)`, 'info');
+            return 2; // ACTIVATION - for stuck or helpless feelings
         }
         
-        // Default to commitment for emotional support
+        // Default to commitment for basic emotional support
+        this.debugConsole.log(`Default case - selecting Ma'aseh step 1 (COMMITMENT)`, 'info');
         return 1;
     }
 
     generateMaasehStepResponse(step, analysis) {
         const responses = {
             1: { // COMMITMENT
+                child_crisis: [
+                    "I can see this is really scary. Are you somewhere safe right now? I'm going to help you and stay with you.",
+                    "This sounds very frightening. You're being very brave by asking for help. Can you tell me - are you in a safe place?",
+                    "I'm here with you, and you're not alone. This must be so scary. Can you look around and tell me if you're somewhere protected?",
+                    "You're doing the right thing by talking to me. I'm staying right here with you. Are you somewhere safe where grown-ups can help?"
+                ],
                 high_urgency: [
                     "I'm here with you right now, and I'm not going anywhere. You're not facing this alone.",
                     "I hear you, and I'm staying right here with you through this difficult moment.",
@@ -1303,11 +1357,21 @@ class ModelLoader {
         const stepResponses = responses[step];
         let responseArray;
         
-        // Select appropriate response category based on analysis
+        // Enhanced response selection with child crisis priority
         if (step === 1) { // COMMITMENT
-            if (analysis.urgencyLevel > 3) responseArray = stepResponses.high_urgency;
-            else if (analysis.urgencyLevel > 1) responseArray = stepResponses.medium_urgency;
-            else responseArray = stepResponses.low_urgency;
+            if (analysis.isChildUser && analysis.crisisKeywords.length > 0) {
+                responseArray = stepResponses.child_crisis;
+                this.debugConsole.log(`Selected child crisis response pattern`, 'info');
+            } else if (analysis.urgencyLevel > 3) {
+                responseArray = stepResponses.high_urgency;
+                this.debugConsole.log(`Selected high urgency response pattern`, 'info');
+            } else if (analysis.urgencyLevel > 1) {
+                responseArray = stepResponses.medium_urgency;
+                this.debugConsole.log(`Selected medium urgency response pattern`, 'info');
+            } else {
+                responseArray = stepResponses.low_urgency;
+                this.debugConsole.log(`Selected low urgency response pattern`, 'info');
+            }
         } else if (step === 2) { // ACTIVATION
             responseArray = analysis.crisisKeywords.length > 0 ? 
                            stepResponses.crisis_context : stepResponses.general;
@@ -1323,7 +1387,12 @@ class ModelLoader {
         
         // Select response using embedding variance for variation
         const responseIndex = Math.floor((analysis.variance * 1000) % responseArray.length);
-        return responseArray[responseIndex];
+        const selectedResponse = responseArray[responseIndex];
+        
+        this.debugConsole.log(`Ma'aseh step ${step} applied with response index ${responseIndex}`, 'info');
+        this.debugConsole.log(`Selected response: "${selectedResponse.substring(0, 50)}..."`, 'verbose');
+        
+        return selectedResponse;
     }
 
     getEmergencyResponse(inputText) {
