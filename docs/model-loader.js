@@ -9,7 +9,8 @@
 class ModelLoader {
     constructor(debugConsole) {
         this.debugConsole = debugConsole;
-        this.session = null;
+        this.encoderSession = null;
+        this.decoderSession = null;
         this.tokenizer = null;
         this.isLoaded = false;
         this.modelCache = null;
@@ -30,31 +31,19 @@ class ModelLoader {
 
     async loadMT5Model(progressCallback) {
         try {
-            this.debugConsole.log('Starting mT5 model loading', 'info');
+            this.debugConsole.log('Starting mT5 encoder and decoder loading', 'info');
             
-            // Check if model is cached
-            const cachedModel = await this.checkModelCache();
+            // Load both encoder and decoder in parallel
+            const [encoderData, decoderData] = await Promise.all([
+                this.loadModelComponent('encoder', progressCallback),
+                this.loadModelComponent('decoder', progressCallback)
+            ]);
             
-            if (cachedModel) {
-                this.debugConsole.log('Loading model from cache', 'info');
-                await this.initializeModel(cachedModel, progressCallback);
-            } else {
-                this.debugConsole.log('Downloading model from HuggingFace', 'info');
-                try {
-                    const modelData = await this.downloadModel(progressCallback);
-                    await this.initializeModel(modelData, progressCallback);
-                    
-                    // Cache the model
-                    await this.cacheModel(modelData);
-                } catch (downloadError) {
-                    this.debugConsole.log(`Model download failed: ${downloadError.message}`, 'error');
-                    this.debugConsole.log('Real mT5 model required - no fallback mode', 'error');
-                    throw downloadError;
-                }
-            }
+            // Initialize both models
+            await this.initializeBothModels(encoderData, decoderData, progressCallback);
             
             this.isLoaded = true;
-            this.debugConsole.log('mT5 model loaded successfully', 'info');
+            this.debugConsole.log('mT5 encoder and decoder loaded successfully', 'info');
             
         } catch (error) {
             this.debugConsole.log(`Model loading failed: ${error.message}`, 'error');
@@ -62,11 +51,10 @@ class ModelLoader {
         }
     }
 
-    async checkModelCache() {
+    async checkModelCache(cacheKey = CONFIG.models.mt5.cache_key) {
         if (!this.modelCache) return null;
         
         try {
-            const cacheKey = CONFIG.models.mt5.cache_key;
             const response = await this.modelCache.match(cacheKey);
             
             if (response) {
@@ -81,35 +69,45 @@ class ModelLoader {
         return null;
     }
 
-    async downloadModel(progressCallback) {
-        // Use encoder-only models for proper two-stage inference
-        const modelSources = [
-            // Try encoder models first (no decoder dependencies)
-            CONFIG.models.mt5.huggingface_url, // encoder_model.onnx from config
+    async loadModelComponent(component, progressCallback) {
+        const cacheKey = component === 'encoder' ? CONFIG.models.mt5.cache_key : CONFIG.models.mt5.decoder_cache_key;
+        const cachedModel = await this.checkModelCache(cacheKey);
+        
+        if (cachedModel) {
+            this.debugConsole.log(`Loading ${component} from cache`, 'info');
+            return cachedModel;
+        } else {
+            this.debugConsole.log(`Downloading ${component} from HuggingFace`, 'info');
+            const modelData = await this.downloadModelComponent(component, progressCallback);
+            await this.cacheModel(modelData, cacheKey);
+            return modelData;
+        }
+    }
+
+    async downloadModelComponent(component, progressCallback) {
+        const modelSources = component === 'encoder' ? [
+            CONFIG.models.mt5.encoder_url,
             'https://huggingface.co/google/mt5-small/resolve/main/onnx/encoder_model.onnx',
             'https://huggingface.co/Xenova/mt5-small/resolve/main/onnx/encoder_model_quantized.onnx'
+        ] : [
+            CONFIG.models.mt5.decoder_url,
+            'https://huggingface.co/google/mt5-small/resolve/main/onnx/decoder_model.onnx'
         ];
         
         let lastError;
         
-        for (const encoderUrl of modelSources) {
+        for (const modelUrl of modelSources) {
             try {
-                this.debugConsole.log(`Trying to download mT5 model from: ${encoderUrl}`, 'verbose');
-                
-                // Use a proxy to avoid CORS issues
-                const proxyUrl = this.getProxyUrl(encoderUrl);
-                this.debugConsole.log(`Using proxy URL: ${proxyUrl}`, 'verbose');
-                
-                // Download with retry logic
+                this.debugConsole.log(`Trying to download ${component} from: ${modelUrl}`, 'verbose');
+                const proxyUrl = this.getProxyUrl(modelUrl);
                 return await this.fetchWithProgressAndRetry(proxyUrl, progressCallback);
-                
             } catch (error) {
                 lastError = error;
-                this.debugConsole.log(`Download from ${encoderUrl} failed: ${error.message}`, 'warn');
+                this.debugConsole.log(`Download from ${modelUrl} failed: ${error.message}`, 'warn');
             }
         }
         
-        throw new Error(`Failed to download mT5 model from all sources. Last error: ${lastError.message}`);
+        throw new Error(`Failed to download ${component} from all sources. Last error: ${lastError.message}`);
     }
 
     getProxyUrl(originalUrl) {
@@ -234,7 +232,7 @@ class ModelLoader {
     }
 
 
-    async initializeModel(modelData, progressCallback) {
+    async initializeBothModels(encoderData, decoderData, progressCallback) {
         try {
             progressCallback(90);
             
@@ -261,7 +259,7 @@ class ModelLoader {
                     throw new Error('WebAssembly is required for mT5 model inference');
                 }
                 
-                // Load the actual mT5 model
+                // Load both encoder and decoder models
                 try {
                     // Configure ONNX Runtime with proper WebAssembly settings
                     const sessionOptions = {
@@ -271,11 +269,19 @@ class ModelLoader {
                     
                     this.debugConsole.log(`ONNX Runtime WASM paths: ${ort.env.wasm.wasmPaths}`, 'verbose');
                     
-                    this.debugConsole.log('Creating ONNX session with WASM provider...', 'verbose');
-                    this.session = await ort.InferenceSession.create(modelData, sessionOptions);
-                    this.debugConsole.log('mT5 ONNX model loaded successfully', 'info');
-                    this.debugConsole.log(`Model input names: ${Object.keys(this.session.inputNames || {})}`, 'verbose');
-                    this.debugConsole.log(`Model output names: ${Object.keys(this.session.outputNames || {})}`, 'verbose');
+                    // Create encoder session
+                    this.debugConsole.log('Creating encoder ONNX session with WASM provider...', 'verbose');
+                    this.encoderSession = await ort.InferenceSession.create(encoderData, sessionOptions);
+                    this.debugConsole.log('mT5 encoder ONNX model loaded successfully', 'info');
+                    this.debugConsole.log(`Encoder input names: ${Object.keys(this.encoderSession.inputNames || {})}`, 'verbose');
+                    this.debugConsole.log(`Encoder output names: ${Object.keys(this.encoderSession.outputNames || {})}`, 'verbose');
+                    
+                    // Create decoder session
+                    this.debugConsole.log('Creating decoder ONNX session with WASM provider...', 'verbose');
+                    this.decoderSession = await ort.InferenceSession.create(decoderData, sessionOptions);
+                    this.debugConsole.log('mT5 decoder ONNX model loaded successfully', 'info');
+                    this.debugConsole.log(`Decoder input names: ${Object.keys(this.decoderSession.inputNames || {})}`, 'verbose');
+                    this.debugConsole.log(`Decoder output names: ${Object.keys(this.decoderSession.outputNames || {})}`, 'verbose');
                 } catch (error) {
                     const errorMsg = error.message || error.toString();
                     this.debugConsole.log(`Failed to load ONNX model: ${errorMsg}`, 'error');
@@ -355,12 +361,16 @@ class ModelLoader {
             // Basic vocabulary for mT5 (simplified)
             vocab: {
                 '<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3,
-                'therapy': 4, 'feel': 5, 'how': 6, 'you': 7, 'i': 8, 'am': 9,
-                'help': 10, 'support': 11, 'understand': 12, 'listen': 13,
-                'share': 14, 'think': 15, 'what': 16, 'when': 17, 'why': 18,
-                'good': 19, 'bad': 20, 'sad': 21, 'happy': 22, 'angry': 23,
-                'difficult': 24, 'challenging': 25, 'better': 26, 'worse': 27,
-                'can': 28, 'will': 29, 'would': 30, 'should': 31, 'could': 32
+                // Crisis support specific vocabulary
+                'here': 4, 'with': 5, 'you': 6, 'safe': 7, 'shelter': 8, 'help': 9,
+                'think': 10, 'what': 11, 'when': 12, 'where': 13, 'can': 14, 'now': 15,
+                'i': 16, 'am': 17, 'we': 18, 'together': 19, 'small': 20, 'task': 21,
+                'first': 22, 'next': 23, 'step': 24, 'breathe': 25, 'focus': 26,
+                'around': 27, 'see': 28, 'hear': 29, 'feel': 30, 'touch': 31,
+                'remember': 32, 'before': 33, 'after': 34, 'then': 35, 'happened': 36,
+                'situation': 37, 'control': 38, 'choose': 39, 'able': 40, 'capable': 41,
+                'commitment': 42, 'activation': 43, 'questions': 44, 'timeline': 45,
+                'protect': 46, 'protected': 47, 'safety': 48, 'secure': 49, 'stable': 50
             },
             
             encode: (text) => {
@@ -431,11 +441,10 @@ class ModelLoader {
         };
     }
 
-    async cacheModel(modelData) {
+    async cacheModel(modelData, cacheKey = CONFIG.models.mt5.cache_key) {
         if (!this.modelCache) return;
         
         try {
-            const cacheKey = CONFIG.models.mt5.cache_key;
             const response = new Response(modelData, {
                 headers: {
                     'Content-Type': 'application/octet-stream',
@@ -459,20 +468,21 @@ class ModelLoader {
         try {
             const startTime = performance.now();
             
-            // Tokenize input
-            const inputTokens = this.tokenizer.encode(inputText);
-            this.debugConsole.log(`Input tokenized: ${inputTokens.length} tokens`, 'verbose');
+            // Prepare system prompt + user input for proper context
+            const systemPrompt = CONFIG.models.mt5.system_prompt;
+            const fullInput = `${systemPrompt}\n\nUser: ${inputText}\n\nAssistant:`;
             
-            // Run real model inference
+            // Tokenize the full input including system prompt
+            const inputTokens = this.tokenizer.encode(fullInput);
+            this.debugConsole.log(`Input tokenized: ${inputTokens.length} tokens (including system prompt)`, 'verbose');
+            
+            // Run real model inference with system context
             const output = await this.runInference(inputTokens);
-            
-            // Decode output (pass input text for context)
-            const response = this.tokenizer.decode(output, inputText);
             
             const endTime = performance.now();
             this.debugConsole.log(`Response generated in ${(endTime - startTime).toFixed(2)}ms`, 'verbose');
             
-            return response;
+            return output;
             
         } catch (error) {
             this.debugConsole.log(`Response generation failed: ${error.message}`, 'error');
@@ -486,71 +496,121 @@ class ModelLoader {
             this.debugConsole.log('High memory usage detected', 'warn');
         }
         
-        if (!this.session) {
-            throw new Error('ONNX session not initialized');
+        if (!this.encoderSession || !this.decoderSession) {
+            throw new Error('Encoder and decoder sessions not initialized');
         }
         
         try {
-            // Prepare input tensor for mT5 encoder
-            const inputTensor = new ort.Tensor('int64', BigInt64Array.from(inputTokens.map(id => BigInt(id))), [1, inputTokens.length]);
+            // Stage 1: Run encoder
+            const encoderHiddenStates = await this.runEncoderInference(inputTokens);
             
-            // Create attention mask (same shape as input_ids, filled with 1s)
-            const attentionMask = new ort.Tensor('int64', BigInt64Array.from(new Array(inputTokens.length).fill(BigInt(1))), [1, inputTokens.length]);
+            // Stage 2: Run decoder with encoder outputs
+            const generatedText = await this.runDecoderInference(encoderHiddenStates, inputTokens);
             
-            // Run inference on the real ONNX model
-            this.debugConsole.log('Running real mT5 model inference', 'verbose');
-            const feeds = { 
-                input_ids: inputTensor,
-                attention_mask: attentionMask
-            };
-            const results = await this.session.run(feeds);
-            
-            // Extract encoder output embeddings
-            const outputTensor = results[Object.keys(results)[0]];
-            this.debugConsole.log(`Encoder inference completed. Output shape: ${outputTensor.dims}`, 'verbose');
-            
-            // Convert encoder embeddings to contextual response
-            // This simulates a decoder by mapping embeddings to meaningful text
-            const embeddings = Array.from(outputTensor.data);
-            const response = this.generateResponseFromEmbeddings(embeddings, inputTokens);
-            
-            return response;
+            return generatedText;
             
         } catch (error) {
-            this.debugConsole.log(`ONNX inference failed: ${error.message}`, 'error');
+            this.debugConsole.log(`Two-stage inference failed: ${error.message}`, 'error');
             throw error;
         }
     }
 
-    generateResponseFromEmbeddings(embeddings, inputTokens) {
-        // Stage 2: Convert encoder embeddings to meaningful text response
-        // This simulates decoder functionality using semantic patterns
+    async runEncoderInference(inputTokens) {
+        // Prepare input tensor for mT5 encoder
+        const inputTensor = new ort.Tensor('int64', BigInt64Array.from(inputTokens.map(id => BigInt(id))), [1, inputTokens.length]);
         
-        try {
-            // Analyze embedding patterns to determine response type
-            const embeddingMagnitude = Math.sqrt(embeddings.slice(0, 100).reduce((sum, val) => sum + val * val, 0));
-            const embeddingMean = embeddings.slice(0, 100).reduce((sum, val) => sum + val, 0) / 100;
+        // Create attention mask (same shape as input_ids, filled with 1s)
+        const attentionMask = new ort.Tensor('int64', BigInt64Array.from(new Array(inputTokens.length).fill(BigInt(1))), [1, inputTokens.length]);
+        
+        // Run encoder inference
+        this.debugConsole.log('Running mT5 encoder inference', 'verbose');
+        const encoderFeeds = { 
+            input_ids: inputTensor,
+            attention_mask: attentionMask
+        };
+        const encoderResults = await this.encoderSession.run(encoderFeeds);
+        
+        // Extract encoder hidden states
+        const encoderOutputTensor = encoderResults[Object.keys(encoderResults)[0]];
+        this.debugConsole.log(`Encoder inference completed. Output shape: ${encoderOutputTensor.dims}`, 'verbose');
+        
+        return encoderOutputTensor;
+    }
+
+    async runDecoderInference(encoderHiddenStates, inputTokens) {
+        // Prepare decoder inputs
+        // Start with the beginning-of-sequence token (ID 2 for mT5)
+        const decoderInputIds = [2]; // <s> token
+        const maxGenerationLength = 100;
+        
+        let generatedTokens = [...decoderInputIds];
+        
+        // Generate tokens one by one
+        for (let i = 0; i < maxGenerationLength; i++) {
+            // Prepare decoder input tensor
+            const decoderInputTensor = new ort.Tensor('int64', BigInt64Array.from(generatedTokens.map(id => BigInt(id))), [1, generatedTokens.length]);
             
-            this.debugConsole.log(`Embedding magnitude: ${embeddingMagnitude.toFixed(4)}, mean: ${embeddingMean.toFixed(4)}`, 'verbose');
+            // Create decoder attention mask
+            const decoderAttentionMask = new ort.Tensor('int64', BigInt64Array.from(new Array(generatedTokens.length).fill(BigInt(1))), [1, generatedTokens.length]);
             
-            // Simple decoder simulation based on embedding characteristics
-            // In a real decoder, this would be learned neural network patterns
-            if (embeddingMagnitude > 10) {
-                if (embeddingMean > 0) {
-                    return "I understand your message and I'm here to help with that topic.";
-                } else {
-                    return "That's an interesting perspective. Let me provide some guidance on that.";
+            // Run decoder inference
+            const decoderFeeds = {
+                input_ids: decoderInputTensor,
+                encoder_hidden_states: encoderHiddenStates,
+                attention_mask: decoderAttentionMask
+            };
+            
+            const decoderResults = await this.decoderSession.run(decoderFeeds);
+            
+            // Get logits and select next token (simple argmax for now)
+            const logitsTensor = decoderResults[Object.keys(decoderResults)[0]];
+            const logits = Array.from(logitsTensor.data);
+            
+            // Get the logits for the last position
+            const vocabSize = Math.floor(logits.length / generatedTokens.length);
+            const lastPositionLogits = logits.slice((generatedTokens.length - 1) * vocabSize, generatedTokens.length * vocabSize);
+            
+            // Find the token with highest probability (argmax)
+            let nextTokenId = 0;
+            let maxLogit = -Infinity;
+            for (let j = 0; j < lastPositionLogits.length; j++) {
+                if (lastPositionLogits[j] > maxLogit) {
+                    maxLogit = lastPositionLogits[j];
+                    nextTokenId = j;
                 }
-            } else if (embeddingMagnitude > 5) {
-                return "I can help you explore that idea further. What specific aspects would you like to discuss?";
-            } else {
-                return "Thank you for sharing that with me. How are you feeling about this situation?";
             }
             
-        } catch (error) {
-            this.debugConsole.log(`Response generation from embeddings failed: ${error.message}`, 'error');
-            return "I'm processing your message. Could you tell me more about what you're thinking?";
+            // Stop if we generate end-of-sequence token (ID 3 for mT5)
+            if (nextTokenId === 3) {
+                break;
+            }
+            
+            generatedTokens.push(nextTokenId);
         }
+        
+        this.debugConsole.log(`Generated ${generatedTokens.length} tokens: ${generatedTokens.slice(1)}`, 'verbose');
+        
+        // Decode tokens to text (simple decoding for now)
+        return this.decodeTokensToText(generatedTokens.slice(1)); // Remove start token
+    }
+
+    decodeTokensToText(tokens) {
+        // Simple reverse vocabulary lookup
+        const reverseVocab = {};
+        for (const [word, id] of Object.entries(this.tokenizer.vocab)) {
+            reverseVocab[id] = word;
+        }
+        
+        const words = tokens.map(tokenId => reverseVocab[tokenId] || '<unk>');
+        return words.join(' ').replace(/<[^>]*>/g, '').trim();
+    }
+
+    // Old fake decoder method - now replaced with real neural text generation
+    generateResponseFromEmbeddings(embeddings, inputTokens) {
+        // This method is deprecated and no longer used
+        // Real decoder inference now happens in runDecoderInference()
+        this.debugConsole.log('Warning: generateResponseFromEmbeddings called but deprecated', 'warn');
+        return "Real neural text generation active - this fallback should not be reached.";
     }
 
     async clearCache() {
@@ -568,7 +628,8 @@ class ModelLoader {
     }
 
     destroy() {
-        this.session = null;
+        this.encoderSession = null;
+        this.decoderSession = null;
         this.tokenizer = null;
         this.isLoaded = false;
     }

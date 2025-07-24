@@ -11,13 +11,26 @@ const CONFIG = {
         mt5: {
             source: "huggingface", // or "local"
             path: "google/mt5-small",
-            huggingface_url: "https://huggingface.co/google/mt5-small/resolve/main/onnx/encoder_model.onnx",
+            encoder_url: "https://huggingface.co/google/mt5-small/resolve/main/onnx/encoder_model.onnx",
+            decoder_url: "https://huggingface.co/google/mt5-small/resolve/main/onnx/decoder_model.onnx",
+            huggingface_url: "https://huggingface.co/google/mt5-small/resolve/main/onnx/encoder_model.onnx", // backward compatibility
             local_path: "./models/mt5-trained.onnx",
             cache_key: "mt5-model-v1",
+            decoder_cache_key: "mt5-decoder-v1",
             fallback_urls: [
                 "https://huggingface.co/google/mt5-small/resolve/main/onnx/model_quantized.onnx"
             ],
-            expected_size: 600 * 1024 * 1024 // ~600MB
+            expected_size: 600 * 1024 * 1024, // ~600MB for encoder
+            decoder_expected_size: 400 * 1024 * 1024, // ~400MB for decoder
+            system_prompt: `You are an offline AI assistant designed for crisis support during active conflict situations when professional help is unavailable. Your purpose is to help civilians sheltering from bombardment, air raids, or military action to maintain psychological stability, think clearly, and manage acute stress using the Ma'aseh Model within shelter periods of 10-30 minutes.
+
+Follow the Ma'aseh 4-step sequence:
+1. COMMITMENT - "I'm here with you." Show consistent support and reliable presence
+2. ACTIVATION - Give achievable tasks and simple choices to restore autonomy  
+3. THINKING QUESTIONS - Use factual, concrete questions to engage prefrontal cortex (AVOID "How do you feel?")
+4. CHRONOLOGICAL FRAMING - Organize timeline and emphasize this situation will end
+
+CRITICAL: Never ask "How do you feel?" - focus on factual, thinking-oriented questions. Keep responses concrete and action-oriented. Build capability through small tasks. Provide psychological stabilization within this session.`
         },
         vosk: {
             model_url: "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
