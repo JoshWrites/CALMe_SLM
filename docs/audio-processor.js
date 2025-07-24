@@ -56,50 +56,62 @@ class AudioProcessor extends EventTarget {
 
     async loadVoskModel() {
         // In a real implementation, this would load the actual VOSK model
-        // For now, we'll simulate it
+        // For now, we'll use the mock implementation from vosk.js
         this.debugConsole.log('Loading VOSK model from: ' + CONFIG.models.vosk.model_path, 'verbose');
         
-        // Simulate model loading
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                resolve({
-                    KaldiRecognizer: class {
-                        constructor(sampleRate, alternatives) {
-                            this.sampleRate = sampleRate;
-                            this.alternatives = alternatives;
+        // Use the createModule from lib/vosk.js which has better mock responses
+        if (typeof createModule === 'function') {
+            this.debugConsole.log('Using VOSK createModule from library', 'verbose');
+            return await createModule();
+        } else {
+            this.debugConsole.log('createModule not available, using basic mock', 'warn');
+            // Fallback basic mock
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    resolve({
+                        KaldiRecognizer: class {
+                            constructor(sampleRate, alternatives) {
+                                this.sampleRate = sampleRate;
+                                this.alternatives = alternatives;
+                            }
+                            
+                            setWords(value) {
+                                // Mock implementation
+                            }
+                            
+                            acceptWaveform(buffer) {
+                                // Mock implementation
+                                return Math.random() > 0.7;
+                            }
+                            
+                            result() {
+                                const mockResults = [
+                                    "I'm feeling good today",
+                                    "This is really helpful", 
+                                    "I need some support",
+                                    "Can you help me with this",
+                                    "I'm struggling with anxiety",
+                                    "Thank you for listening"
+                                ];
+                                return JSON.stringify({
+                                    text: mockResults[Math.floor(Math.random() * mockResults.length)]
+                                });
+                            }
+                            
+                            partialResult() {
+                                return JSON.stringify({
+                                    partial: "I'm feeling"
+                                });
+                            }
+                            
+                            finalResult() {
+                                return this.result();
+                            }
                         }
-                        
-                        setWords(value) {
-                            // Mock implementation
-                        }
-                        
-                        acceptWaveform(buffer) {
-                            // Mock implementation
-                            return Math.random() > 0.7;
-                        }
-                        
-                        result() {
-                            // Mock implementation
-                            return JSON.stringify({
-                                text: "This is a test transcription"
-                            });
-                        }
-                        
-                        partialResult() {
-                            // Mock implementation
-                            return JSON.stringify({
-                                partial: "This is a partial"
-                            });
-                        }
-                        
-                        finalResult() {
-                            // Mock implementation
-                            return this.result();
-                        }
-                    }
-                });
-            }, 1000);
-        });
+                    });
+                }, 1000);
+            });
+        }
     }
 
     async startRecording() {
