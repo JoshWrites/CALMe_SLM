@@ -103,17 +103,14 @@ class ModelLoader {
 
     async loadModelComponent(component, progressCallback) {
         const cacheKey = CONFIG.models.smollm2.cache_key;
-        const cachedModel = await this.checkModelCache(cacheKey);
         
-        if (cachedModel) {
-            this.debugConsole.log(`Loading ${component} from cache`, 'info');
-            return cachedModel;
-        } else {
-            this.debugConsole.log(`Downloading ${component} from HuggingFace`, 'info');
-            const modelData = await this.downloadModelComponent(component, progressCallback);
-            await this.cacheModel(modelData, cacheKey);
-            return modelData;
-        }
+        // Skip cache for debugging - always download fresh
+        this.debugConsole.log(`Skipping cache, downloading ${component} fresh from HuggingFace`, 'info');
+        this.debugConsole.log(`Cache key would be: ${cacheKey}`, 'verbose');
+        
+        const modelData = await this.downloadModelComponent(component, progressCallback);
+        await this.cacheModel(modelData, cacheKey);
+        return modelData;
     }
 
     async downloadModelComponent(component, progressCallback) {
@@ -121,6 +118,8 @@ class ModelLoader {
             CONFIG.models.smollm2.model_url,
             ...CONFIG.models.smollm2.fallback_urls
         ];
+        
+        this.debugConsole.log(`Download sources: ${JSON.stringify(modelSources)}`, 'info');
         
         let lastError;
         
