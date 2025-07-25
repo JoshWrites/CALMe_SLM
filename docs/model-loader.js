@@ -187,7 +187,7 @@ class ModelLoader {
 
     async fetchWithProgress(url, progressCallback) {
         const headers = {
-            'User-Agent': 'CALMe-SLM/Quant-v0.1.5'
+            'User-Agent': 'CALMe-SLM/Quant-v0.1.6'
         };
         
         // Add HuggingFace authorization if token is provided
@@ -349,14 +349,14 @@ class ModelLoader {
             
             // Wait for Transformers.js to load if not ready
             let retries = 0;
-            while (typeof window.TransformersTokenizer === 'undefined' && retries < 20) {
-                this.debugConsole.log(`Waiting for Transformers.js library... (${retries + 1}/20)`, 'verbose');
+            while (typeof window.TransformersTokenizer === 'undefined' && retries < 30) {
+                this.debugConsole.log(`Waiting for Transformers.js library... (${retries + 1}/30)`, 'verbose');
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 retries++;
             }
             
             if (typeof window.TransformersTokenizer === 'undefined') {
-                throw new Error('Transformers.js library not loaded after 20 seconds');
+                throw new Error('Transformers.js library not loaded after 30 seconds');
             }
             
             this.transformersTokenizer = new window.TransformersTokenizer();

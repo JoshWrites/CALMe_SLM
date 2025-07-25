@@ -17,7 +17,13 @@ async function loadTransformersTokenizer() {
         console.log('Loading mT5-small tokenizer...');
         
         // Load the actual mT5 tokenizer
-        const tokenizer = await AutoTokenizer.from_pretrained('google/mt5-small');
+        // Note: mT5 uses SentencePiece, we need to use Xenova's version which has the tokenizer.json
+        console.log('Attempting to load from Xenova/mt5-small...');
+        const tokenizer = await AutoTokenizer.from_pretrained('Xenova/mt5-small', {
+            progress_callback: (progress) => {
+                console.log(`Tokenizer loading progress: ${JSON.stringify(progress)}`);
+            }
+        });
         
         // Create a wrapper class that matches our expected interface
         window.TransformersTokenizer = class {
@@ -57,23 +63,41 @@ async function loadTransformersTokenizer() {
         
     } catch (error) {
         console.error('Failed to load Transformers.js:', error);
+        console.log('Loading simple tokenizer as fallback...');
         
-        // Create a mock tokenizer for fallback
-        window.TransformersTokenizer = class MockTokenizer {
-            constructor() {
-                console.warn('Using mock tokenizer - Transformers.js failed to load');
-            }
+        // Try to load the simple tokenizer as fallback
+        try {
+            const script = document.createElement('script');
+            script.src = 'lib/simple-tokenizer.js';
+            document.head.appendChild(script);
             
-            encodeIds(text) {
-                console.warn('Mock: encodeIds called with:', text);
-                return text.split(/\s+/).map((_, i) => i + 4);
-            }
+            // Wait for simple tokenizer to load
+            await new Promise((resolve) => {
+                script.onload = resolve;
+                script.onerror = () => resolve(); // Continue even if it fails
+            });
             
-            decodeIds(ids) {
-                console.warn('Mock: decodeIds called with:', ids);
-                return "[MOCK] Transformers.js not loaded - cannot decode";
-            }
-        };
+            console.log('Simple tokenizer loaded as fallback');
+        } catch (fallbackError) {
+            console.error('Failed to load simple tokenizer:', fallbackError);
+            
+            // Last resort mock tokenizer
+            window.TransformersTokenizer = class MockTokenizer {
+                constructor() {
+                    console.warn('Using mock tokenizer - all tokenizers failed to load');
+                }
+                
+                encodeIds(text) {
+                    console.warn('Mock: encodeIds called with:', text);
+                    return text.split(/\s+/).map((_, i) => i + 4);
+                }
+                
+                decodeIds(ids) {
+                    console.warn('Mock: decodeIds called with:', ids);
+                    return "[MOCK] No tokenizer available - cannot decode";
+                }
+            };
+        }
         
         return false;
     }
