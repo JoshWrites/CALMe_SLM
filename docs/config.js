@@ -7,20 +7,13 @@
  */
 
 const CONFIG = {
-    version: "SMOL v0.0.2",
+    version: "WEBLLM v0.1.0",
     models: {
         smollm2: {
-            source: "huggingface", // or "local"
-            path: "HuggingFaceTB/SmolLM2-360M-Instruct",
-            // Use quantized model for browser efficiency
-            model_url: "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct/resolve/main/onnx/model_q4f16.onnx",
-            local_path: "./models/smollm2-360m-instruct.onnx",
-            cache_key: "smollm2-360m-instruct-v1",
-            fallback_urls: [
-                "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct/resolve/main/onnx/model.onnx"
-            ],
-            // SmolLM2 is much smaller than mT5
-            expected_size: 400 * 1024 * 1024, // ~400MB for quantized model
+            source: "webllm",
+            model_id: "SmolLM2-1.7B-Instruct", // WebLLM native model ID
+            // No URLs needed - WebLLM handles everything
+            expected_size: 900 * 1024 * 1024, // ~900MB WebLLM model
             system_prompt: `You are an offline AI assistant designed for crisis support during active conflict situations when professional help is unavailable. Your purpose is to help civilians sheltering from bombardment, air raids, or military action to maintain psychological stability, think clearly, and manage acute stress using the Ma'aseh Model within shelter periods of 10-30 minutes.
 
 Follow the Ma'aseh 4-step sequence:

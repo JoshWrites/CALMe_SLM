@@ -108,10 +108,10 @@ class TherapyAssistant {
             this.updateProgress('Skipping VOSK (text-only demo)...', 15);
             this.debugConsole.log('VOSK disabled for text-only demo', 'info');
             
-            this.updateProgress('Loading SmolLM2 AI model...', 25);
+            this.updateProgress('Loading SmolLM2 via WebLLM...', 25);
             await this.modelLoader.loadSmolLM2Model((progress) => {
                 const totalProgress = 25 + (progress * 0.65);
-                this.updateProgress(`Loading SmolLM2 model... ${Math.round(progress)}%`, totalProgress);
+                this.updateProgress(`WebLLM loading... ${Math.round(progress)}%`, totalProgress);
             });
             
             this.updateProgress('AI models ready', 95);
