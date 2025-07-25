@@ -7,8 +7,32 @@ async function loadTransformersTokenizer() {
     try {
         console.log('Loading Transformers.js from CDN...');
         
-        // Dynamic import of Transformers.js
-        const { AutoTokenizer, env } = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
+        // Dynamic import of Transformers.js - try multiple CDNs
+        let transformersModule;
+        const cdnUrls = [
+            'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2',
+            'https://unpkg.com/@xenova/transformers@2.17.2',
+            'https://cdn.skypack.dev/@xenova/transformers@2.17.2'
+        ];
+        
+        let lastError;
+        for (const cdnUrl of cdnUrls) {
+            try {
+                console.log(`Trying to load Transformers.js from: ${cdnUrl}`);
+                transformersModule = await import(cdnUrl);
+                console.log(`✅ Successfully loaded from: ${cdnUrl}`);
+                break;
+            } catch (cdnError) {
+                console.warn(`Failed to load from ${cdnUrl}:`, cdnError.message);
+                lastError = cdnError;
+            }
+        }
+        
+        if (!transformersModule) {
+            throw new Error(`All CDN attempts failed. Last error: ${lastError.message}`);
+        }
+        
+        const { AutoTokenizer, env } = transformersModule;
         
         // Configure environment for browser usage
         env.allowRemoteModels = true;
@@ -62,8 +86,9 @@ async function loadTransformersTokenizer() {
         return true;
         
     } catch (error) {
-        console.error('Failed to load Transformers.js:', error);
-        console.log('Loading simple tokenizer as fallback...');
+        console.error('❌ CRITICAL: Failed to load Transformers.js:', error);
+        console.error('Error details:', error.message, error.stack);
+        console.log('🔄 Loading simple tokenizer as fallback...');
         
         // Try to load the simple tokenizer as fallback
         try {
