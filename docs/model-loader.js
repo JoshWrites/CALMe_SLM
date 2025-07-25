@@ -187,7 +187,7 @@ class ModelLoader {
 
     async fetchWithProgress(url, progressCallback) {
         const headers = {
-            'User-Agent': 'CALMe-SLM/Quant-v0.1.0'
+            'User-Agent': 'CALMe-SLM/Quant-v0.1.1'
         };
         
         // Add HuggingFace authorization if token is provided
