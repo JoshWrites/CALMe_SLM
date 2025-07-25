@@ -286,7 +286,7 @@ class TherapyAssistant {
             this.updateEmotionalState(response);
         } catch (error) {
             this.debugConsole.log(`Response generation error: ${error.message}`, 'error');
-            this.addMessage("I'm having trouble processing that right now. Please refresh and try again.", 'ai');
+            this.addMessage("[ERROR] Model failed to generate response - check debug console", 'ai');
         } finally {
             this.isProcessing = false;
             this.updateSendButton(true);
