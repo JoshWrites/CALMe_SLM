@@ -128,10 +128,12 @@ class ModelLoader {
             try {
                 this.debugConsole.log(`Trying to download ${component} from: ${modelUrl}`, 'verbose');
                 const proxyUrl = this.getProxyUrl(modelUrl);
+                this.debugConsole.log(`Proxy URL: ${proxyUrl}`, 'verbose');
                 return await this.fetchWithProgressAndRetry(proxyUrl, progressCallback);
             } catch (error) {
                 lastError = error;
-                this.debugConsole.log(`Download from ${modelUrl} failed: ${error.message}`, 'warn');
+                this.debugConsole.log(`Download from ${modelUrl} failed: ${error.message}`, 'error');
+                this.debugConsole.log(`Error details: ${error.stack}`, 'verbose');
             }
         }
         
