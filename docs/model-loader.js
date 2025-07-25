@@ -5610,7 +5610,7 @@ class ModelLoader {
                 'bizarre': 5205
             },
             
-            encode:   encode:   encode:   encode:   encode:   encode: (text) => {
+            encode: (text) => {
                 // Improved tokenization for mT5
                 const tokens = text.toLowerCase()
                     .replace(/[.,!?;:]/g, ' ')
