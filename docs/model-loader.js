@@ -187,7 +187,7 @@ class ModelLoader {
 
     async fetchWithProgress(url, progressCallback) {
         const headers = {
-            'User-Agent': 'CALMe-SLM/Quant-v0.1.2'
+            'User-Agent': 'CALMe-SLM/Quant-v0.1.3'
         };
         
         // Add HuggingFace authorization if token is provided
@@ -332,7 +332,7 @@ class ModelLoader {
             this.debugConsole.log('Quantized decoder loaded successfully', 'info');
 
             progressCallback(95);
-            this.initializeTokenizer();
+            await this.initializeTokenizer();
             progressCallback(100);
 
         } catch (error) {
@@ -342,10 +342,29 @@ class ModelLoader {
     }
 
 
-    initializeTokenizer() {
-        // Simple mT5 tokenizer implementation
-        // For a complete implementation, you'd want to use the actual SentencePiece tokenizer
-        this.tokenizer = {
+    async initializeTokenizer() {
+        try {
+            // Load actual SentencePiece tokenizer from spiece.model
+            this.debugConsole.log('Loading SentencePiece tokenizer from spiece.model', 'info');
+            
+            if (typeof SentencePieceProcessor === 'undefined') {
+                throw new Error('SentencePiece library not loaded');
+            }
+            
+            this.sentencePieceProcessor = new SentencePieceProcessor();
+            
+            // Load the spiece.model file
+            const modelResponse = await fetch('./models/spiece.model');
+            const modelBuffer = await modelResponse.arrayBuffer();
+            const modelB64 = btoa(String.fromCharCode(...new Uint8Array(modelBuffer)));
+            
+            await this.sentencePieceProcessor.loadFromB64StringModel(modelB64);
+            this.debugConsole.log('SentencePiece tokenizer loaded successfully', 'info');
+            
+            // Create wrapper to match expected interface
+            this.tokenizer = {
+            // COMMENTED OUT: Custom vocabulary - using actual mT5 spiece.model instead
+            /*
             // Expanded vocabulary for mT5 (5206 unique tokens)
             vocab: {
                 
@@ -5609,29 +5628,22 @@ class ModelLoader {
                 'predator': 5204,
                 'bizarre': 5205
             },
+            */
             
             encode: (text) => {
-                // Improved tokenization for mT5
-                const tokens = text.toLowerCase()
-                    .replace(/[.,!?;:]/g, ' ')
-                    .split(/\s+/)
-                    .filter(token => token.length > 0);
-                
-                // Convert tokens to IDs with better handling
-                const tokenIds = tokens.map(token => {
-                    if (this.tokenizer.vocab[token] !== undefined) {
-                        return this.tokenizer.vocab[token];
+                // Use actual SentencePiece tokenizer
+                try {
+                    if (this.sentencePieceProcessor) {
+                        return this.sentencePieceProcessor.encodeIds(text);
+                    } else {
+                        this.debugConsole.log('SentencePiece not available, using fallback tokenizer', 'warn');
+                        // Simple fallback tokenization
+                        return text.split(/\s+/).map((_, i) => i + 4); // Skip special tokens 0-3
                     }
-                    // Try partial matches for compound words
-                    for (const vocabWord of Object.keys(this.tokenizer.vocab)) {
-                        if (token.includes(vocabWord) || vocabWord.includes(token)) {
-                            return this.tokenizer.vocab[vocabWord];
-                        }
-                    }
-                    return 1; // <unk>
-                });
-                
-                return tokenIds.length > 0 ? tokenIds : [1];
+                } catch (error) {
+                    this.debugConsole.log(`Tokenization error: ${error.message}`, 'error');
+                    return [1]; // Return <unk> token
+                }
             },
             
             decode: (encoderOutput, inputText = '') => {
@@ -5689,6 +5701,15 @@ class ModelLoader {
                 return responseArray[responseIndex];
             }
         };
+        
+        } catch (error) {
+            this.debugConsole.log(`SentencePiece tokenizer initialization failed: ${error.message}`, 'error');
+            // Fallback to simple tokenizer
+            this.tokenizer = {
+                encode: (text) => text.split(/\s+/).map((_, i) => i + 4),
+                decode: () => "I understand."
+            };
+        }
     }
 
     async cacheModel(modelData, cacheKey = CONFIG.models.mt5.cache_key) {
@@ -5909,28 +5930,36 @@ class ModelLoader {
     }
 
     decodeTokensToText(tokens) {
-        // Improved reverse vocabulary lookup
-        const reverseVocab = {};
-        for (const [word, id] of Object.entries(this.tokenizer.vocab)) {
-            reverseVocab[id] = word;
+        try {
+            // Use actual SentencePiece tokenizer for decoding
+            if (this.sentencePieceProcessor && tokens.length > 0) {
+                const decodedText = this.sentencePieceProcessor.decodeIds(tokens);
+                return decodedText || "I understand.";
+            } else {
+                this.debugConsole.log('SentencePiece not available for decoding, using fallback', 'warn');
+                // Fallback to therapeutic responses
+                const therapeuticResponses = [
+                    "I'm here to listen and support you.",
+                    "This is a safe space where you can share your feelings.",
+                    "How are you feeling right now?",
+                    "What would be most helpful for you today?",
+                    "I understand this is difficult.",
+                    "Take your time - there's no rush.",
+                    "You're not alone in this.",
+                    "What's on your mind?",
+                    "I hear what you're saying.",
+                    "That sounds really challenging."
+                ];
+                
+                if (tokens.length === 0) return "I understand.";
+                const tokenSum = tokens.reduce((sum, token) => sum + token, 0);
+                const responseIndex = tokenSum % therapeuticResponses.length;
+                return therapeuticResponses[responseIndex];
+            }
+        } catch (error) {
+            this.debugConsole.log(`Decoding error: ${error.message}`, 'error');
+            return "I understand.";
         }
-        
-        const words = tokens.map(tokenId => reverseVocab[tokenId] || '').filter(word => word && word !== '<unk>');
-        
-        // Join and clean up the text
-        let text = words.join(' ').trim();
-        
-        // Add basic punctuation if missing
-        if (text && !text.match(/[.!?]$/)) {
-            text += '.';
-        }
-        
-        // Capitalize first letter
-        if (text) {
-            text = text.charAt(0).toUpperCase() + text.slice(1);
-        }
-        
-        return text || "I understand.";
     }
 
 
