@@ -1,5 +1,5 @@
-// Transformers.js loader for browser - mT5 tokenizer
-// This loads the HuggingFace Transformers.js library for proper mT5 tokenization
+// Transformers.js loader for browser - SmolLM2 tokenizer
+// This loads the HuggingFace Transformers.js library for proper SmolLM2 tokenization
 
 window.TransformersTokenizer = null;
 
@@ -38,12 +38,12 @@ async function loadTransformersTokenizer() {
         env.allowRemoteModels = true;
         env.remoteURL = 'https://huggingface.co/';
         
-        console.log('Loading mT5-small tokenizer...');
+        console.log('Loading SmolLM2-360M-Instruct tokenizer...');
         
-        // Load the actual mT5 tokenizer
-        // Note: mT5 uses SentencePiece, we need to use Xenova's version which has the tokenizer.json
-        console.log('Attempting to load from Xenova/mt5-small...');
-        const tokenizer = await AutoTokenizer.from_pretrained('Xenova/mt5-small', {
+        // Load the SmolLM2 tokenizer
+        // Note: SmolLM2 uses standard GPT-style tokenization, should work well with Transformers.js
+        console.log('Attempting to load from HuggingFaceTB/SmolLM2-360M-Instruct...');
+        const tokenizer = await AutoTokenizer.from_pretrained('HuggingFaceTB/SmolLM2-360M-Instruct', {
             progress_callback: (progress) => {
                 console.log(`Tokenizer loading progress: ${JSON.stringify(progress)}`);
             }
@@ -53,7 +53,7 @@ async function loadTransformersTokenizer() {
         window.TransformersTokenizer = class {
             constructor() {
                 this.tokenizer = tokenizer;
-                console.log('✅ mT5 tokenizer loaded successfully');
+                console.log('✅ SmolLM2 tokenizer loaded successfully');
             }
             
             encodeIds(text) {
@@ -88,43 +88,7 @@ async function loadTransformersTokenizer() {
     } catch (error) {
         console.error('❌ CRITICAL: Failed to load Transformers.js:', error);
         console.error('Error details:', error.message, error.stack);
-        console.log('🔄 Loading simple tokenizer as fallback...');
-        
-        // Try to load the simple tokenizer as fallback
-        try {
-            const script = document.createElement('script');
-            script.src = 'lib/simple-tokenizer.js';
-            document.head.appendChild(script);
-            
-            // Wait for simple tokenizer to load
-            await new Promise((resolve) => {
-                script.onload = resolve;
-                script.onerror = () => resolve(); // Continue even if it fails
-            });
-            
-            console.log('Simple tokenizer loaded as fallback');
-        } catch (fallbackError) {
-            console.error('Failed to load simple tokenizer:', fallbackError);
-            
-            // Last resort mock tokenizer
-            window.TransformersTokenizer = class MockTokenizer {
-                constructor() {
-                    console.warn('Using mock tokenizer - all tokenizers failed to load');
-                }
-                
-                encodeIds(text) {
-                    console.warn('Mock: encodeIds called with:', text);
-                    return text.split(/\s+/).map((_, i) => i + 4);
-                }
-                
-                decodeIds(ids) {
-                    console.warn('Mock: decodeIds called with:', ids);
-                    return "[MOCK] No tokenizer available - cannot decode";
-                }
-            };
-        }
-        
-        return false;
+        throw error; // NO FALLBACKS - fail fast for debugging
     }
 }
 

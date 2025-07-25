@@ -1,10 +1,10 @@
-// Simple tokenizer that mimics mT5 behavior for testing
-// This is a temporary solution until we can get proper SentencePiece working
+// Simple tokenizer that mimics SmolLM2 behavior for testing
+// This is a fallback solution when Transformers.js fails to load
 
 window.SimpleTokenizer = class {
     constructor() {
         // Basic vocabulary mapping for common words
-        // In reality, mT5 has 250K tokens, but we'll use a simple approach
+        // In reality, SmolLM2 has ~50K tokens, but we'll use a simple approach
         this.vocab = new Map();
         this.reverseVocab = new Map();
         
@@ -60,4 +60,4 @@ window.SimpleTokenizer = class {
 
 // Auto-initialize
 window.TransformersTokenizer = window.SimpleTokenizer;
-console.log('Simple tokenizer loaded as fallback for mT5');
+console.log('Simple tokenizer loaded as fallback for SmolLM2');

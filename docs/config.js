@@ -7,7 +7,7 @@
  */
 
 const CONFIG = {
-    version: "SMOL v0.0.1",
+    version: "SMOL v0.0.2",
     models: {
         smollm2: {
             source: "huggingface", // or "local"
