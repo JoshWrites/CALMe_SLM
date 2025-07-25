@@ -243,21 +243,27 @@ class ModelLoader {
                 throw new Error('ONNX Runtime required for SmolLM2 model inference');
             }
 
-            // Optimized session options for SmolLM2 quantized model
+            // Basic session options for SmolLM2 - start simple
             const sessionOptions = {
                 executionProviders: ['wasm'],
-                graphOptimizationLevel: 'extended',
-                enableMemPattern: true,
-                enableCpuMemArena: true,
-                executionMode: 'parallel',
-                enableQuantization: true,
-                quantizationMode: 'static'
+                graphOptimizationLevel: 'basic'
             };
 
             // Create SmolLM2 model session
             this.debugConsole.log('Creating SmolLM2 ONNX session...', 'verbose');
-            this.modelSession = await ort.InferenceSession.create(modelData, sessionOptions);
-            this.debugConsole.log('SmolLM2 model loaded successfully', 'info');
+            this.debugConsole.log(`Model data size: ${modelData.byteLength / 1024 / 1024}MB`, 'verbose');
+            this.debugConsole.log(`Session options: ${JSON.stringify(sessionOptions)}`, 'verbose');
+            
+            try {
+                this.modelSession = await ort.InferenceSession.create(modelData, sessionOptions);
+                this.debugConsole.log('SmolLM2 model loaded successfully', 'info');
+                this.debugConsole.log(`Model inputs: ${Object.keys(this.modelSession.inputNames)}`, 'verbose');
+                this.debugConsole.log(`Model outputs: ${Object.keys(this.modelSession.outputNames)}`, 'verbose');
+            } catch (ortError) {
+                this.debugConsole.log(`ONNX Runtime error: ${ortError.message}`, 'error');
+                this.debugConsole.log(`ONNX Runtime stack: ${ortError.stack}`, 'error');
+                throw new Error(`ONNX model loading failed: ${ortError.message}`);
+            }
 
             progressCallback(95);
             await this.initializeTokenizer();
