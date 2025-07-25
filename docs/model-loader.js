@@ -187,7 +187,7 @@ class ModelLoader {
 
     async fetchWithProgress(url, progressCallback) {
         const headers = {
-            'User-Agent': 'CALMe-SLM/Quant-v0.1.4'
+            'User-Agent': 'CALMe-SLM/Quant-v0.1.5'
         };
         
         // Add HuggingFace authorization if token is provided
@@ -344,30 +344,23 @@ class ModelLoader {
 
     async initializeTokenizer() {
         try {
-            // Load actual SentencePiece tokenizer from spiece.model
-            this.debugConsole.log('Loading SentencePiece tokenizer from spiece.model', 'info');
+            // Load actual mT5 tokenizer using Transformers.js
+            this.debugConsole.log('Loading mT5 tokenizer using Transformers.js', 'info');
             
-            // Wait for SentencePiece to load if not ready
+            // Wait for Transformers.js to load if not ready
             let retries = 0;
-            while (typeof window.SentencePieceProcessor === 'undefined' && retries < 10) {
-                this.debugConsole.log(`Waiting for SentencePiece library... (${retries + 1}/10)`, 'verbose');
-                await new Promise(resolve => setTimeout(resolve, 500));
+            while (typeof window.TransformersTokenizer === 'undefined' && retries < 20) {
+                this.debugConsole.log(`Waiting for Transformers.js library... (${retries + 1}/20)`, 'verbose');
+                await new Promise(resolve => setTimeout(resolve, 1000));
                 retries++;
             }
             
-            if (typeof window.SentencePieceProcessor === 'undefined') {
-                throw new Error('SentencePiece library not loaded after 5 seconds');
+            if (typeof window.TransformersTokenizer === 'undefined') {
+                throw new Error('Transformers.js library not loaded after 20 seconds');
             }
             
-            this.sentencePieceProcessor = new window.SentencePieceProcessor();
-            
-            // Load the spiece.model file
-            const modelResponse = await fetch('./models/spiece.model');
-            const modelBuffer = await modelResponse.arrayBuffer();
-            const modelB64 = btoa(String.fromCharCode(...new Uint8Array(modelBuffer)));
-            
-            await this.sentencePieceProcessor.loadFromB64StringModel(modelB64);
-            this.debugConsole.log('SentencePiece tokenizer loaded successfully', 'info');
+            this.transformersTokenizer = new window.TransformersTokenizer();
+            this.debugConsole.log('mT5 tokenizer loaded successfully via Transformers.js', 'info');
             
             // Create wrapper to match expected interface
             this.tokenizer = {
@@ -5639,12 +5632,12 @@ class ModelLoader {
             */
             
             encode: (text) => {
-                // Use actual SentencePiece tokenizer
+                // Use actual mT5 tokenizer via Transformers.js
                 try {
-                    if (this.sentencePieceProcessor) {
-                        return this.sentencePieceProcessor.encodeIds(text);
+                    if (this.transformersTokenizer) {
+                        return this.transformersTokenizer.encodeIds(text);
                     } else {
-                        this.debugConsole.log('SentencePiece not available, using fallback tokenizer', 'warn');
+                        this.debugConsole.log('Transformers tokenizer not available, using fallback', 'warn');
                         // Simple fallback tokenization
                         return text.split(/\s+/).map((_, i) => i + 4); // Skip special tokens 0-3
                     }
@@ -5711,11 +5704,11 @@ class ModelLoader {
         };
         
         } catch (error) {
-            this.debugConsole.log(`SentencePiece tokenizer initialization failed: ${error.message}`, 'error');
+            this.debugConsole.log(`Transformers.js tokenizer initialization failed: ${error.message}`, 'error');
             // Fallback to simple tokenizer - make it clear this is a fallback
             this.tokenizer = {
                 encode: (text) => text.split(/\s+/).map((_, i) => i + 4),
-                decode: () => "[FALLBACK] SentencePiece initialization failed - mT5 tokenizer not loaded"
+                decode: () => "[FALLBACK] Transformers.js initialization failed - mT5 tokenizer not loaded"
             };
         }
     }
@@ -5939,15 +5932,15 @@ class ModelLoader {
 
     decodeTokensToText(tokens) {
         try {
-            // Use actual SentencePiece tokenizer for decoding
-            if (this.sentencePieceProcessor && tokens.length > 0) {
-                const decodedText = this.sentencePieceProcessor.decodeIds(tokens);
+            // Use actual mT5 tokenizer via Transformers.js for decoding
+            if (this.transformersTokenizer && tokens.length > 0) {
+                const decodedText = this.transformersTokenizer.decodeIds(tokens);
                 return decodedText || "I understand.";
             } else {
-                this.debugConsole.log('SentencePiece not available for decoding, using fallback', 'warn');
+                this.debugConsole.log('Transformers tokenizer not available for decoding, using fallback', 'warn');
                 // Fallback - make it clear this is not the actual model
                 const therapeuticResponses = [
-                    "[FALLBACK] SentencePiece decoder not available - actual mT5 model not functioning"
+                    "[FALLBACK] Transformers.js tokenizer not available - actual mT5 model not functioning"
                 ];
                 
                 if (tokens.length === 0) return "I understand.";
