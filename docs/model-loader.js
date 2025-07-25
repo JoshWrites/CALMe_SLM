@@ -255,14 +255,31 @@ class ModelLoader {
             this.debugConsole.log(`Session options: ${JSON.stringify(sessionOptions)}`, 'verbose');
             
             try {
-                this.modelSession = await ort.InferenceSession.create(modelData, sessionOptions);
+                this.debugConsole.log('Starting ONNX session creation...', 'verbose');
+                
+                // Add timeout to detect hanging
+                const sessionPromise = ort.InferenceSession.create(modelData, sessionOptions);
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('ONNX session creation timeout after 60s')), 60000)
+                );
+                
+                this.modelSession = await Promise.race([sessionPromise, timeoutPromise]);
+                
                 this.debugConsole.log('SmolLM2 model loaded successfully', 'info');
-                this.debugConsole.log(`Model inputs: ${Object.keys(this.modelSession.inputNames)}`, 'verbose');
-                this.debugConsole.log(`Model outputs: ${Object.keys(this.modelSession.outputNames)}`, 'verbose');
+                this.debugConsole.log(`Model inputs: ${JSON.stringify(this.modelSession.inputNames)}`, 'verbose');
+                this.debugConsole.log(`Model outputs: ${JSON.stringify(this.modelSession.outputNames)}`, 'verbose');
             } catch (ortError) {
                 this.debugConsole.log(`ONNX Runtime error: ${ortError.message}`, 'error');
                 this.debugConsole.log(`ONNX Runtime stack: ${ortError.stack}`, 'error');
-                throw new Error(`ONNX model loading failed: ${ortError.message}`);
+                
+                // Try with even simpler options
+                this.debugConsole.log('Retrying with minimal session options...', 'info');
+                try {
+                    this.modelSession = await ort.InferenceSession.create(modelData, {});
+                    this.debugConsole.log('SmolLM2 model loaded with minimal options', 'info');
+                } catch (fallbackError) {
+                    throw new Error(`ONNX model loading failed: ${ortError.message}`);
+                }
             }
 
             progressCallback(95);
