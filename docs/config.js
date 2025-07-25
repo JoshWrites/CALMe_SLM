@@ -13,7 +13,7 @@ const CONFIG = {
             source: "huggingface", // or "local"
             path: "HuggingFaceTB/SmolLM2-360M-Instruct",
             // Use quantized model for browser efficiency
-            model_url: "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct/resolve/main/onnx/model_q4.onnx",
+            model_url: "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct/resolve/main/onnx/model_q4f16.onnx",
             local_path: "./models/smollm2-360m-instruct.onnx",
             cache_key: "smollm2-360m-instruct-v1",
             fallback_urls: [

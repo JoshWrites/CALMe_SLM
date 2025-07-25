@@ -261,10 +261,10 @@ class ModelLoader {
                 
                 this.debugConsole.log('Starting ONNX session creation...', 'verbose');
                 
-                // Shorter timeout for faster feedback
+                // Very short timeout for debugging
                 const sessionPromise = ort.InferenceSession.create(modelData, sessionOptions);
                 const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('ONNX session creation timeout after 30s')), 30000)
+                    setTimeout(() => reject(new Error('ONNX session creation timeout after 15s - model too complex for browser')), 15000)
                 );
                 
                 this.modelSession = await Promise.race([sessionPromise, timeoutPromise]);
