@@ -11,9 +11,9 @@ const CONFIG = {
     models: {
         smollm2: {
             source: "webllm",
-            model_id: "SmolLM2-1.7B-Instruct-q4f16_1-MLC", // WebLLM native model ID
+            model_id: "SmolLM2-360M-Instruct-q4f16_1-MLC", // Smaller, more reliable model
             // No URLs needed - WebLLM handles everything
-            expected_size: 900 * 1024 * 1024, // ~900MB WebLLM model
+            expected_size: 376 * 1024 * 1024, // ~376MB WebLLM model
             system_prompt: `You are an offline AI assistant designed for crisis support during active conflict situations when professional help is unavailable. Your purpose is to help civilians sheltering from bombardment, air raids, or military action to maintain psychological stability, think clearly, and manage acute stress using the Ma'aseh Model within shelter periods of 10-30 minutes.
 
 Follow the Ma'aseh 4-step sequence:
