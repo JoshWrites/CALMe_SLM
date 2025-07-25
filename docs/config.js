@@ -7,22 +7,20 @@
  */
 
 const CONFIG = {
-    version: "Quant v0.1.7-debug",
+    version: "SMOL v0.0.1",
     models: {
-        mt5: {
+        smollm2: {
             source: "huggingface", // or "local"
-            path: "google/mt5-small",
-            // Use INT8 quantized models for maximum memory efficiency
-            encoder_url: "https://huggingface.co/Xenova/mt5-small/resolve/main/onnx/encoder_model_quantized.onnx",
-            decoder_url: "https://huggingface.co/Xenova/mt5-small/resolve/main/onnx/decoder_model_quantized.onnx",
-            huggingface_url: "https://huggingface.co/google/mt5-small/resolve/main/onnx/encoder_model.onnx", // backward compatibility
-            local_path: "./models/mt5-trained.onnx",
-            cache_key: "mt5-quantized-encoder-v1",
-            decoder_cache_key: "mt5-quantized-decoder-v1",
-            fallback_urls: [], // No fallbacks - quantized models must work
-            // Updated size expectations for quantized models
-            expected_size: 150 * 1024 * 1024, // ~150MB for quantized encoder
-            decoder_expected_size: 280 * 1024 * 1024, // ~280MB for quantized decoder
+            path: "HuggingFaceTB/SmolLM2-360M-Instruct",
+            // Use quantized model for browser efficiency
+            model_url: "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct/resolve/main/onnx/model_q4.onnx",
+            local_path: "./models/smollm2-360m-instruct.onnx",
+            cache_key: "smollm2-360m-instruct-v1",
+            fallback_urls: [
+                "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct/resolve/main/onnx/model.onnx"
+            ],
+            // SmolLM2 is much smaller than mT5
+            expected_size: 400 * 1024 * 1024, // ~400MB for quantized model
             system_prompt: `You are an offline AI assistant designed for crisis support during active conflict situations when professional help is unavailable. Your purpose is to help civilians sheltering from bombardment, air raids, or military action to maintain psychological stability, think clearly, and manage acute stress using the Ma'aseh Model within shelter periods of 10-30 minutes.
 
 Follow the Ma'aseh 4-step sequence:
