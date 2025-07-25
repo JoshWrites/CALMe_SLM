@@ -1,9 +1,9 @@
 # CALMe SLM - SmolLM2 Migration Handoff
 
-## Current Status: SMOL v0.0.1
+## Current Status: SMOL v0.0.2
 
 **Branch:** `SmolLM2`  
-**Last Commit:** `3ef077a` - Switch to SmolLM2-360M-Instruct - SMOL v0.0.1  
+**Last Commit:** `fa5df13` - Complete SmolLM2 migration - SMOL v0.0.2  
 **GitHub PR:** https://github.com/JoshWrites/CALMe_SLM/pull/new/SmolLM2
 
 ## What Was Done
@@ -25,7 +25,7 @@
 
 ### 3. Migration Started
 - ✅ Created new `SmolLM2` branch
-- ✅ Updated version to "SMOL v0.0.1" across all files
+- ✅ Updated version to "SMOL v0.0.2" across all files
 - ✅ Configured SmolLM2 model URLs in `docs/config.js`
 - ✅ Committed and pushed initial changes
 
