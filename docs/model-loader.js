@@ -243,10 +243,10 @@ class ModelLoader {
                 throw new Error('ONNX Runtime required for SmolLM2 model inference');
             }
 
-            // Basic session options for SmolLM2 - start simple
+            // Try CPU execution first (more compatible than WASM)
             const sessionOptions = {
-                executionProviders: ['wasm'],
-                graphOptimizationLevel: 'basic'
+                executionProviders: ['cpu'],
+                graphOptimizationLevel: 'disabled'
             };
 
             // Create SmolLM2 model session
@@ -255,12 +255,15 @@ class ModelLoader {
             this.debugConsole.log(`Session options: ${JSON.stringify(sessionOptions)}`, 'verbose');
             
             try {
+                // Validate model data first
+                this.debugConsole.log(`Model validation: ${modelData.byteLength > 0 ? 'Valid' : 'Invalid'} ArrayBuffer`, 'verbose');
+                
                 this.debugConsole.log('Starting ONNX session creation...', 'verbose');
                 
-                // Add timeout to detect hanging
+                // Shorter timeout for faster feedback
                 const sessionPromise = ort.InferenceSession.create(modelData, sessionOptions);
                 const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('ONNX session creation timeout after 60s')), 60000)
+                    setTimeout(() => reject(new Error('ONNX session creation timeout after 30s')), 30000)
                 );
                 
                 this.modelSession = await Promise.race([sessionPromise, timeoutPromise]);
